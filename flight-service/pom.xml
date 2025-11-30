@@ -5,25 +5,29 @@
            http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.2.12</version>
+    <relativePath/>
+  </parent>
+
   <groupId>com.flightservice</groupId>
   <artifactId>flight-service</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <packaging>jar</packaging>
-
   <name>flight-service</name>
-  <description>Flight inventory microservice</description>
 
   <properties>
     <java.version>17</java.version>
-    <spring.boot.version>3.1.4</spring.boot.version>
+    <spring-cloud.version>2023.0.4</spring-cloud.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-dependencies</artifactId>
-        <version>${spring.boot.version}</version>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -31,7 +35,7 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- Web + JSON -->
+    <!-- Spring Web (use 'web' not 'webmvc' artifact) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
@@ -43,6 +47,19 @@
       <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
 
+    <!-- Validation (this provides @Valid and Jakarta Validation API) -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+
+    <!-- Eureka client -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+    </dependency>
+
+    <!-- (Only needed if this service needs to call others) Feign is not required for flight-service -->
     <!-- MySQL driver -->
     <dependency>
       <groupId>com.mysql</groupId>
@@ -50,53 +67,48 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- Validation -->
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-validation</artifactId>
-    </dependency>
-
-    <!-- Lombok for brevity (optional) -->
+    <!-- Lombok (optional) -->
     <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <optional>true</optional>
     </dependency>
 
-    <!-- Actuator (useful for readiness/health checks) -->
+    <!-- Actuator (optional) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
-    <!-- Tests -->
+    <!-- Tests (use standard starter-test) -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.junit.vintage</groupId>
-          <artifactId>junit-vintage-engine</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
-      <!-- Spring Boot plugin -->
-      <plugin>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-maven-plugin</artifactId>
-      </plugin>
-
       <!-- Compiler plugin -->
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
         <configuration>
-          <release>17</release>
+          <release>${java.version}</release>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>1.18.30</version>
+            </path>
+          </annotationProcessorPaths>
         </configuration>
+      </plugin>
+
+      <!-- Spring Boot plugin -->
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
     </plugins>
   </build>

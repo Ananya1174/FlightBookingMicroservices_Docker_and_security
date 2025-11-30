@@ -6,8 +6,11 @@ import com.flightservice.dto.SearchRequest;
 import com.flightservice.dto.SearchResultDto;
 import com.flightservice.service.FlightService;
 import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.flightservice.dto.FlightDetailDto;
 
 import java.util.List;
 
@@ -24,12 +27,20 @@ public class FlightController {
     @PostMapping("/inventory")
     public ResponseEntity<FlightResponseDto> addInventory(@Valid @RequestBody FlightInventoryRequest request) {
         FlightResponseDto dto = flightService.addInventory(request);
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.status(201).body(dto);
     }
 
     @PostMapping("/search")
     public ResponseEntity<List<SearchResultDto>> searchFlights(@Valid @RequestBody SearchRequest req) {
         List<SearchResultDto> results = flightService.searchFlights(req);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.status(HttpStatus.CREATED).body(results);
+    }
+    @GetMapping("/{id}")
+    public ResponseEntity<FlightDetailDto> getFlightById(@PathVariable("id") Long id) {
+        FlightDetailDto dto = flightService.getFlightDetailById(id);
+        if (dto == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(dto);
     }
 }

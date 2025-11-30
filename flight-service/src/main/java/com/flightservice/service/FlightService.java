@@ -108,6 +108,31 @@ public class FlightService {
             return r;
         }).collect(Collectors.toList());
     }
+    @Transactional(readOnly = true)
+    public FlightDetailDto getFlightDetailById(Long id) {
+        return flightRepository.findById(id)
+                .map(f -> {
+                    FlightDetailDto dto = new FlightDetailDto();
+                    dto.setId(f.getId());
+                    dto.setFlightNumber(f.getFlightNumber());
+                    dto.setAirlineName(f.getAirlineName());
+                    dto.setAirlineLogoUrl(f.getAirlineLogoUrl());
+                    dto.setOrigin(f.getOrigin());
+                    dto.setDestination(f.getDestination());
+                    dto.setDepartureTime(f.getDepartureTime());
+                    dto.setArrivalTime(f.getArrivalTime());
+                    dto.setPrice(f.getPrice());
+                    dto.setTripType(f.getTripType());
+                    dto.setTotalSeats(f.getTotalSeats());
 
+                    List<FlightDetailDto.SeatDto> seats = f.getSeats() == null ? List.of()
+                        : f.getSeats().stream()
+                          .map(s -> new FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
+                          .collect(Collectors.toList());
+                    dto.setSeats(seats);
+                    return dto;
+                })
+                .orElse(null);
+    }
     // helper methods: getFlightById, reserveSeat etc. will be used by booking-service later.
 }

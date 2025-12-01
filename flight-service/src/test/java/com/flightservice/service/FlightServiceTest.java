@@ -28,7 +28,7 @@ class FlightServiceTest {
     FlightRepository flightRepository;
 
     @Mock
-    FlightSeatRepository seatRepository; // not used by current FlightService but mocked for constructor
+    FlightSeatRepository seatRepository; // not used by current FlightService but mocked
 
     @InjectMocks
     FlightService flightService;
@@ -68,8 +68,10 @@ class FlightServiceTest {
 
         assertThat(dto).isNotNull();
         assertThat(dto.getId()).isEqualTo(42L);
-        assertThat(dto.getAirlineName()).isEqualTo("Indigo");
-        assertThat(dto.getTotalSeats()).isEqualTo(2);
+        // access nested FlightInfoDto
+        assertThat(dto.getInfo()).isNotNull();
+        assertThat(dto.getInfo().getAirlineName()).isEqualTo("Indigo");
+        assertThat(dto.getInfo().getTotalSeats()).isEqualTo(2);
 
         // verify repository.save called once and saved.flight had seat list of size 2
         ArgumentCaptor<Flight> cap = ArgumentCaptor.forClass(Flight.class);
@@ -165,6 +167,11 @@ class FlightServiceTest {
         assertThat(dto.getId()).isEqualTo(100L);
         assertThat(dto.getSeats()).hasSize(1);
         assertThat(dto.getSeats().get(0).getSeatNumber()).isEqualTo("1");
+
+        // also verify nested info values if needed
+        assertThat(dto.getInfo()).isNotNull();
+        assertThat(dto.getInfo().getFlightNumber()).isEqualTo("AI101");
+        assertThat(dto.getInfo().getAirlineName()).isEqualTo("Air India");
     }
 
     @Test

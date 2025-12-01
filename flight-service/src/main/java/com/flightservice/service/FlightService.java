@@ -1,6 +1,7 @@
 package com.flightservice.service;
 
 import com.flightservice.dto.*;
+import com.flightservice.mapper.FlightMapper;
 import com.flightservice.model.Flight;
 import com.flightservice.model.FlightSeat;
 import com.flightservice.repository.FlightRepository;
@@ -20,7 +21,6 @@ public class FlightService {
 
     public FlightService(FlightRepository flightRepository) {
         this.flightRepository = flightRepository;
-
     }
 
     @Transactional
@@ -48,7 +48,6 @@ public class FlightService {
                 seats.add(seat);
             }
         } else {
-            // auto-generate seat numbers 1..totalSeats as "1","2"... or "A1"
             for (int i = 1; i <= Optional.ofNullable(request.getTotalSeats()).orElse(0); i++) {
                 FlightSeat seat = new FlightSeat();
                 seat.setSeatNumber(String.valueOf(i));
@@ -61,20 +60,8 @@ public class FlightService {
 
         Flight saved = flightRepository.save(flight);
 
-        // prepare response dto
-        FlightResponseDto dto = new FlightResponseDto();
-        dto.setId(saved.getId());
-        dto.setFlightNumber(saved.getFlightNumber());
-        dto.setAirlineName(saved.getAirlineName());
-        dto.setAirlineLogoUrl(saved.getAirlineLogoUrl());
-        dto.setOrigin(saved.getOrigin());
-        dto.setDestination(saved.getDestination());
-        dto.setDepartureTime(saved.getDepartureTime());
-        dto.setArrivalTime(saved.getArrivalTime());
-        dto.setPrice(saved.getPrice());
-        dto.setTripType(saved.getTripType());
-        dto.setTotalSeats(saved.getTotalSeats());
-        return dto;
+        // use mapper to build response
+        return FlightMapper.toResponseDto(saved);
     }
 
     @Transactional(readOnly = true)
@@ -106,31 +93,13 @@ public class FlightService {
             return r;
         }).toList();
     }
+
     @Transactional(readOnly = true)
     public FlightDetailDto getFlightDetailById(Long id) {
         return flightRepository.findById(id)
-                .map(f -> {
-                    FlightDetailDto dto = new FlightDetailDto();
-                    dto.setId(f.getId());
-                    dto.setFlightNumber(f.getFlightNumber());
-                    dto.setAirlineName(f.getAirlineName());
-                    dto.setAirlineLogoUrl(f.getAirlineLogoUrl());
-                    dto.setOrigin(f.getOrigin());
-                    dto.setDestination(f.getDestination());
-                    dto.setDepartureTime(f.getDepartureTime());
-                    dto.setArrivalTime(f.getArrivalTime());
-                    dto.setPrice(f.getPrice());
-                    dto.setTripType(f.getTripType());
-                    dto.setTotalSeats(f.getTotalSeats());
-
-                    List<FlightDetailDto.SeatDto> seats = f.getSeats() == null ? List.of()
-                        : f.getSeats().stream()
-                          .map(s -> new FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
-                          .toList();
-                    dto.setSeats(seats);
-                    return dto;
-                })
+                .map(FlightMapper::toDetailDto)
                 .orElse(null);
     }
-    // helper methods: getFlightById, reserveSeat etc. will be used by booking-service later.
+
+    // helper methods...
 }

@@ -1,48 +1,57 @@
 package com.flightservice.mapper;
 
 import com.flightservice.model.Flight;
-import com.flightservice.dto.FlightInfoDto;
-import com.flightservice.dto.FlightResponseDto;
-import com.flightservice.dto.FlightDetailDto;
 import com.flightservice.model.FlightSeat;
+import com.flightservice.dto.*;
+
+import java.util.List;
 import java.util.stream.Collectors;
 
-public class FlightMapper {
+public final class FlightMapper {
+
+    private FlightMapper() {}
 
     public static FlightInfoDto toInfoDto(Flight f) {
         if (f == null) return null;
-        FlightInfoDto info = new FlightInfoDto();
-        info.setFlightNumber(f.getFlightNumber());
-        info.setAirlineName(f.getAirlineName());
-        info.setAirlineLogoUrl(f.getAirlineLogoUrl());
-        info.setOrigin(f.getOrigin());
-        info.setDestination(f.getDestination());
-        info.setDepartureTime(f.getDepartureTime());
-        info.setArrivalTime(f.getArrivalTime());
-        info.setPrice(f.getPrice());
-        info.setTripType(f.getTripType());
-        info.setTotalSeats(f.getTotalSeats());
-        return info;
+        return FlightInfoDto.builder()
+                .flightNumber(f.getFlightNumber())
+                .airlineName(f.getAirlineName())
+                .airlineLogoUrl(f.getAirlineLogoUrl())
+                .origin(f.getOrigin())
+                .destination(f.getDestination())
+                .departureTime(f.getDepartureTime())
+                .arrivalTime(f.getArrivalTime())
+                .price(f.getPrice())
+                .tripType(f.getTripType())
+                .totalSeats(f.getTotalSeats())
+                .build();
     }
 
     public static FlightResponseDto toResponseDto(Flight f) {
-        FlightResponseDto dto = new FlightResponseDto();
-        dto.setId(f.getId());
-        dto.setInfo(toInfoDto(f));
-        return dto;
+        if (f == null) return null;
+        return FlightResponseDto.builder()
+                .id(f.getId())
+                .info(toInfoDto(f))
+                .build();
     }
 
     public static FlightDetailDto toDetailDto(Flight f) {
         if (f == null) return null;
+        List<FlightDetailDto.SeatDto> seats = null;
+        if (f.getSeats() != null) {
+            seats = f.getSeats().stream()
+                    .map(s -> new FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
+                    .collect(Collectors.toList());
+        }
         FlightDetailDto dto = new FlightDetailDto();
         dto.setId(f.getId());
         dto.setInfo(toInfoDto(f));
-        dto.setSeats(
-            f.getSeats() == null ? null :
-            f.getSeats().stream()
-              .map(s -> new FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
-              .toList()
-        );
+        dto.setSeats(seats);
         return dto;
+    }
+
+    public static FlightSeatDto toSeatDto(FlightSeat s) {
+        if (s == null) return null;
+        return new FlightSeatDto(s.getSeatNumber(), s.getStatus());
     }
 }

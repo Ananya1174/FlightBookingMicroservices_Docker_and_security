@@ -1,18 +1,22 @@
 package com.flightservice.dto;
 
-import com.flightservice.model.AbstractFlightInfo;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import lombok.ToString;
-import java.util.List;
+import lombok.*;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(callSuper = true)
-public class FlightInfoDto extends AbstractFlightInfo {
-    private List<FlightSeatDto> seats; 
+@Builder
+public class FlightInfoDto {
+    private String flightNumber;
+    private String airlineName;
+    private String airlineLogoUrl;
+    private String origin;
+    private String destination;
+    private LocalDateTime departureTime;
+    private LocalDateTime arrivalTime;
+    private Double price;
+    private String tripType;
+    private Integer totalSeats;
 }

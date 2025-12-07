@@ -1,18 +1,13 @@
 package com.flightservice.dto;
 
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
+import lombok.*;
 
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class FlightResponseDto {
     private Long id;
-
-    @JsonUnwrapped
     private FlightInfoDto info;
 }

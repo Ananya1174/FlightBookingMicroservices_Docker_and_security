@@ -10,7 +10,7 @@ import java.net.URI;
 import java.util.List;
 
 @RestController
-@RequestMapping("/flight")
+@RequestMapping("/api/flight")
 public class FlightController {
 
     private final FlightService flightService;
@@ -19,13 +19,21 @@ public class FlightController {
         this.flightService = flightService;
     }
 
+    /**
+     * POST /api/flight/airline/inventory/add
+     * Accepts FlightInventoryRequest, performs validations in service.
+     * Returns only created id in body and Location header /api/flight/{id}
+     */
     @PostMapping("/airline/inventory/add")
     public ResponseEntity<IdResponse> addInventory(@Valid @RequestBody FlightInventoryRequest req) {
         Long id = flightService.addInventory(req);
-        URI location = URI.create(String.format("/flight/%d", id));
+        URI location = URI.create(String.format("/api/flight/%d", id));
         return ResponseEntity.created(location).body(new IdResponse(id));
     }
 
+    /**
+     * POST /api/flight/search
+     */
     @PostMapping("/search")
     public ResponseEntity<List<SearchResultDto>> search(@Valid @RequestBody SearchRequest req) {
         List<SearchResultDto> results = flightService.searchFlights(req);

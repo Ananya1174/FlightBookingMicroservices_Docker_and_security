@@ -1,11 +1,7 @@
 package com.flightservice.dto;
 
+import lombok.*;
 import java.util.List;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
 @Getter
 @Setter
@@ -13,10 +9,7 @@ import com.fasterxml.jackson.annotation.JsonUnwrapped;
 @AllArgsConstructor
 public class FlightDetailDto {
     private Long id;
-
-    @JsonUnwrapped
     private FlightInfoDto info;
-
     private List<SeatDto> seats;
 
     @Getter
@@ -25,6 +18,6 @@ public class FlightDetailDto {
     @AllArgsConstructor
     public static class SeatDto {
         private String seatNumber;
-        private String status; 
+        private String status;
     }
 }

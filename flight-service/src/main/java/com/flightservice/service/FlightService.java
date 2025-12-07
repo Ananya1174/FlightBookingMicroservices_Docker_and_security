@@ -1,17 +1,19 @@
 package com.flightservice.service;
 
 import com.flightservice.dto.*;
-import com.flightservice.mapper.FlightMapper;
 import com.flightservice.model.Flight;
 import com.flightservice.model.FlightSeat;
 import com.flightservice.repository.FlightRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class FlightService {
@@ -23,43 +25,60 @@ public class FlightService {
         this.flightRepository = flightRepository;
     }
 
+    /**
+     * Add flight inventory.
+     * Returns created flight id only.
+     */
     @Transactional
-    public FlightResponseDto addInventory(FlightInventoryRequest request) {
-        Flight flight = new Flight();
-        flight.setFlightNumber(request.getFlightNumber());
-        flight.setAirlineName(request.getAirlineName());
-        flight.setAirlineLogoUrl(request.getAirlineLogoUrl());
-        flight.setOrigin(request.getOrigin());
-        flight.setDestination(request.getDestination());
-        flight.setDepartureTime(request.getDepartureTime());
-        flight.setArrivalTime(request.getArrivalTime());
-        flight.setPrice(request.getPrice());
-        flight.setTripType(request.getTripType());
-        flight.setTotalSeats(request.getTotalSeats());
+    public Long addInventory(FlightInventoryRequest req) {
+        if (req == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        }
 
+        // business validation
+        if (req.getArrival() == null || req.getDeparture() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "departure and arrival are required");
+        }
+        if (!req.getArrival().isAfter(req.getDeparture())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arrival must be after departure");
+        }
+
+        // duplicate check: flightNumber + origin + destination + departure
+        boolean exists = flightRepository.existsByFlightNumberAndOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTime(
+                req.getFlightNumber(), req.getOrigin(), req.getDestination(), req.getDeparture());
+
+        if (exists) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate flight already exists");
+        }
+
+        // map to entity
+        Flight flight = new Flight();
+        flight.setFlightNumber(req.getFlightNumber());
+        flight.setAirlineName(req.getAirline());
+        flight.setAirlineLogoUrl(req.getAirlineLogoUrl());
+        flight.setOrigin(req.getOrigin());
+        flight.setDestination(req.getDestination());
+        flight.setDepartureTime(req.getDeparture());
+        flight.setArrivalTime(req.getArrival());
+        flight.setTotalSeats(req.getTotalSeats());
+        flight.setPrice(req.getPrice());
+        // default tripType to one-way if you want or leave null
+        flight.setTripType("ONEWAY");
+
+        // create seats automatically from totalSeats
         List<FlightSeat> seats = new ArrayList<>();
-        if (request.getSeatNumbers() != null && !request.getSeatNumbers().isEmpty()) {
-            for (String seatNo : request.getSeatNumbers()) {
-                FlightSeat seat = new FlightSeat();
-                seat.setSeatNumber(seatNo);
-                seat.setStatus(STATUS_AVAILABLE);
-                seat.setFlight(flight);
-                seats.add(seat);
-            }
-        } else {
-            for (int i = 1; i <= Optional.ofNullable(request.getTotalSeats()).orElse(0); i++) {
-                FlightSeat seat = new FlightSeat();
-                seat.setSeatNumber(String.valueOf(i));
-                seat.setStatus(STATUS_AVAILABLE);
-                seat.setFlight(flight);
-                seats.add(seat);
-            }
+        int total = Optional.ofNullable(req.getTotalSeats()).orElse(0);
+        for (int i = 1; i <= total; i++) {
+            FlightSeat s = new FlightSeat();
+            s.setSeatNumber(String.valueOf(i));
+            s.setStatus(STATUS_AVAILABLE);
+            s.setFlight(flight); // associate child to parent
+            seats.add(s);
         }
         flight.setSeats(seats);
 
         Flight saved = flightRepository.save(flight);
-
-        return FlightMapper.toResponseDto(saved);
+        return saved.getId();
     }
 
     @Transactional(readOnly = true)
@@ -74,7 +93,7 @@ public class FlightService {
         if (req.getTripType() != null && !req.getTripType().isBlank()) {
             flights = flights.stream()
                     .filter(f -> req.getTripType().equalsIgnoreCase(f.getTripType()))
-                    .toList();
+                    .collect(Collectors.toList());
         }
 
         return flights.stream().map(f -> {
@@ -86,17 +105,10 @@ public class FlightService {
             r.setAirlineLogoUrl(f.getAirlineLogoUrl());
             r.setPrice(f.getPrice());
             r.setTripType(f.getTripType());
-            int available = (int) f.getSeats().stream().filter(s -> STATUS_AVAILABLE.equalsIgnoreCase(s.getStatus())).count();
+            int available = (int) Optional.ofNullable(f.getSeats()).orElse(Collections.emptyList())
+                    .stream().filter(s -> STATUS_AVAILABLE.equalsIgnoreCase(s.getStatus())).count();
             r.setSeatsAvailable(available);
             return r;
-        }).toList();
+        }).collect(Collectors.toList());
     }
-
-    @Transactional(readOnly = true)
-    public FlightDetailDto getFlightDetailById(Long id) {
-        return flightRepository.findById(id)
-                .map(FlightMapper::toDetailDto)
-                .orElse(null);
-    }
-
 }

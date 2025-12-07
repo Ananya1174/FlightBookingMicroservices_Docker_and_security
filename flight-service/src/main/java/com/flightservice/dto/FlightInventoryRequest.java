@@ -1,26 +1,20 @@
 package com.flightservice.dto;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
 import jakarta.validation.constraints.*;
-import lombok.Getter;
-import lombok.Setter;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.LocalDateTime;
 
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
 public class FlightInventoryRequest {
 
-    private String flightNumber;
+    @NotBlank
+    @JsonProperty("airline")
+    private String airline;
+
+    @JsonProperty("airlineLogoUrl")
+    private String airlineLogoUrl;
 
     @NotBlank
-    private String airlineName;
-
-    private String airlineLogoUrl;
+    private String flightNumber;
 
     @NotBlank
     private String origin;
@@ -29,20 +23,48 @@ public class FlightInventoryRequest {
     private String destination;
 
     @NotNull
-    private LocalDateTime departureTime;
+    // json property name "departure" expected in request body
+    @JsonProperty("departure")
+    private LocalDateTime departure;
 
     @NotNull
-    private LocalDateTime arrivalTime;
+    // json property name "arrival" expected in request body
+    @JsonProperty("arrival")
+    private LocalDateTime arrival;
+
+    @NotNull
+    @Positive
+    private Integer totalSeats;
 
     @NotNull
     @PositiveOrZero
     private Double price;
 
-    @NotBlank
-    private String tripType; 
+    // getters / setters
+    public String getAirline() { return airline; }
+    public void setAirline(String airline) { this.airline = airline; }
 
-    @Positive
-    private Integer totalSeats;
+    public String getAirlineLogoUrl() { return airlineLogoUrl; }
+    public void setAirlineLogoUrl(String airlineLogoUrl) { this.airlineLogoUrl = airlineLogoUrl; }
 
-    private List<String> seatNumbers;
+    public String getFlightNumber() { return flightNumber; }
+    public void setFlightNumber(String flightNumber) { this.flightNumber = flightNumber; }
+
+    public String getOrigin() { return origin; }
+    public void setOrigin(String origin) { this.origin = origin; }
+
+    public String getDestination() { return destination; }
+    public void setDestination(String destination) { this.destination = destination; }
+
+    public LocalDateTime getDeparture() { return departure; }
+    public void setDeparture(LocalDateTime departure) { this.departure = departure; }
+
+    public LocalDateTime getArrival() { return arrival; }
+    public void setArrival(LocalDateTime arrival) { this.arrival = arrival; }
+
+    public Integer getTotalSeats() { return totalSeats; }
+    public void setTotalSeats(Integer totalSeats) { this.totalSeats = totalSeats; }
+
+    public Double getPrice() { return price; }
+    public void setPrice(Double price) { this.price = price; }
 }

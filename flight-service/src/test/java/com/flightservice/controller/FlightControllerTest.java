@@ -1,13 +1,14 @@
 package com.flightservice.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.flightservice.dto.*;
 import com.flightservice.service.FlightService;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.junit.jupiter.api.*;
+import org.mockito.*;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -16,99 +17,79 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class FlightControllerTest {
 
-    private MockMvc mockMvc;
-    private ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-
     @Mock
     FlightService flightService;
 
-    private FlightController controller;
+    @InjectMocks
+    FlightController controller;
+
+    MockMvc mockMvc;
+    ObjectMapper mapper;
 
     @BeforeEach
-    void setup() {
+    void init() {
         MockitoAnnotations.openMocks(this);
-        controller = new FlightController(flightService);
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        // configure ObjectMapper to handle Java 8 date/time types
+        mapper = new ObjectMapper();
+        mapper.registerModule(new JavaTimeModule());
+        // use ISO-8601 strings instead of timestamps
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        // provide the mapper to MockMvc so request/response bodies use this mapper
+        MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter(mapper);
+
+        mockMvc = MockMvcBuilders.standaloneSetup(controller)
+                .setMessageConverters(converter)
+                .setControllerAdvice(new com.flightservice.exception.GlobalExceptionHandler())
+                .build();
     }
+
     @Test
-    void addInventory_returns201_andBody() throws Exception {
+    void addInventory_success_returns201_and_body() throws Exception {
         FlightInventoryRequest req = new FlightInventoryRequest();
-        req.setAirlineName("Indigo");
-        req.setOrigin("HYD");
-        req.setDestination("BLR");
-        req.setTripType("ONEWAY");
-        req.setTotalSeats(2);
-        req.setPrice(200.0);
-        req.setDepartureTime(LocalDateTime.of(2025, 12, 10, 10, 0));
-        req.setArrivalTime(LocalDateTime.of(2025, 12, 10, 12, 0));
-        req.setSeatNumbers(List.of("1A", "1B"));
+        req.setAirline("SpiceJet");
+        req.setFlightNumber("SG409");
+        req.setOrigin("MAA");
+        req.setDestination("CCU");
+        req.setDeparture(LocalDateTime.now().plusDays(2));
+        req.setArrival(LocalDateTime.now().plusDays(2).plusHours(2));
+        req.setTotalSeats(10);
+        req.setPrice(100.0);
 
-        FlightInfoDto info = new FlightInfoDto();
-        info.setAirlineName("Indigo");
+        when(flightService.addInventory(any())).thenReturn(123L);
 
-        FlightResponseDto resp = new FlightResponseDto();
-        resp.setId(5L);
-        resp.setInfo(info);
-
-        when(flightService.addInventory(any(FlightInventoryRequest.class))).thenReturn(resp);
-
-        mockMvc.perform(post("/api/flights/inventory")
+        mockMvc.perform(post("/api/flight/airline/inventory/add")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
+                .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(5))
-                .andExpect(jsonPath("$.airlineName").value("Indigo")); 
+                .andExpect(jsonPath("$.id").value(123))
+                .andExpect(header().string("Location", "/api/flight/123"));
+
+        verify(flightService).addInventory(any());
     }
 
     @Test
-    void searchFlights_returns201_andList() throws Exception {
+    void search_returns200_and_results() throws Exception {
         SearchRequest req = new SearchRequest();
-        req.setOrigin("HYD");
-        req.setDestination("BLR");
-        req.setTravelDate(LocalDate.of(2025, 12, 10));
+        req.setOrigin("MAA");
+        req.setDestination("CCU");
+        req.setTravelDate(LocalDate.now().plusDays(2));
 
         SearchResultDto r = new SearchResultDto();
-        r.setFlightId(10L);
+        r.setFlightId(1L);
+        when(flightService.searchFlights(any())).thenReturn(List.of(r));
 
-        when(flightService.searchFlights(any(SearchRequest.class))).thenReturn(List.of(r));
-
-        mockMvc.perform(post("/api/flights/search")
+        mockMvc.perform(post("/api/flight/search")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$[0].flightId").value(10));
-    }
-
-    @Test
-    void getFlightById_returns200_whenPresent() throws Exception {
-
-        FlightInfoDto info = new FlightInfoDto();
-        info.setAirlineName("Air India");
-
-        FlightDetailDto dto = new FlightDetailDto();
-        dto.setId(99L);
-        dto.setInfo(info);
-        dto.setSeats(List.of()); 
-
-        when(flightService.getFlightDetailById(99L)).thenReturn(dto);
-
-        mockMvc.perform(get("/api/flights/99"))
+                .content(mapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(99))
-                .andExpect(jsonPath("$.airlineName").value("Air India"));
-    }
-
-    @Test
-    void getFlightById_returns404_whenMissing() throws Exception {
-        when(flightService.getFlightDetailById(123L)).thenReturn(null);
-
-        mockMvc.perform(get("/api/flights/123"))
-                .andExpect(status().isNotFound());
+                .andExpect(jsonPath("$[0].flightId").value(1));
     }
 }

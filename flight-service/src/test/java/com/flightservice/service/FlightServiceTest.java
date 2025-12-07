@@ -4,174 +4,149 @@ import com.flightservice.dto.*;
 import com.flightservice.model.Flight;
 import com.flightservice.model.FlightSeat;
 import com.flightservice.repository.FlightRepository;
-import com.flightservice.repository.FlightSeatRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
 class FlightServiceTest {
 
     @Mock
     FlightRepository flightRepository;
 
-    @Mock
-    FlightSeatRepository seatRepository; 
-
     @InjectMocks
     FlightService flightService;
 
-    @Test
-    void addInventory_withExplicitSeatNumbers_createsFlightAndSeats() {
-        FlightInventoryRequest req = new FlightInventoryRequest();
-        req.setAirlineName("Indigo");
-        req.setOrigin("HYD");
-        req.setDestination("BLR");
-        req.setTripType("ONEWAY");
-        req.setTotalSeats(2);
-        req.setPrice(100.0);
-        req.setDepartureTime(LocalDateTime.of(2025,12,10,10,0));
-        req.setArrivalTime(LocalDateTime.of(2025,12,10,12,0));
-        req.setSeatNumbers(List.of("1A","1B"));
+    private FlightInventoryRequest baseReq;
 
-        Flight saved = new Flight();
-        saved.setId(42L);
-        saved.setAirlineName(req.getAirlineName());
-        saved.setOrigin(req.getOrigin());
-        saved.setDestination(req.getDestination());
-        saved.setTripType(req.getTripType());
-        saved.setPrice(req.getPrice());
-        saved.setDepartureTime(req.getDepartureTime());
-        saved.setArrivalTime(req.getArrivalTime());
-        saved.setTotalSeats(req.getTotalSeats());
-
-        when(flightRepository.save(any(Flight.class))).thenAnswer(invocation -> {
-            Flight f = invocation.getArgument(0);
-            f.setId(42L);
-            return f;
-        });
-
-        FlightResponseDto dto = flightService.addInventory(req);
-
-        assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(42L);
-        assertThat(dto.getInfo()).isNotNull();
-        assertThat(dto.getInfo().getAirlineName()).isEqualTo("Indigo");
-        assertThat(dto.getInfo().getTotalSeats()).isEqualTo(2);
-
-        ArgumentCaptor<Flight> cap = ArgumentCaptor.forClass(Flight.class);
-        verify(flightRepository, times(1)).save(cap.capture());
-        Flight persisted = cap.getValue();
-        assertThat(persisted.getSeats()).hasSize(2);
-        assertThat(persisted.getSeats()).extracting("seatNumber").containsExactlyInAnyOrder("1A","1B");
+    @BeforeEach
+    void setup() {
+        baseReq = new FlightInventoryRequest();
+        baseReq.setAirline("SpiceJet");
+        baseReq.setAirlineLogoUrl("http://logo");
+        baseReq.setFlightNumber("SG409");
+        baseReq.setOrigin("MAA");
+        baseReq.setDestination("CCU");
+        baseReq.setDeparture(LocalDateTime.now().plusDays(2));
+        baseReq.setArrival(LocalDateTime.now().plusDays(2).plusHours(2));
+        baseReq.setTotalSeats(10);
+        baseReq.setPrice(1000.0);
     }
 
     @Test
-    void addInventory_whenNoSeatNumbers_autogeneratesSeats() {
-        FlightInventoryRequest req = new FlightInventoryRequest();
-        req.setAirlineName("Air India");
-        req.setOrigin("DEL");
-        req.setDestination("MAA");
-        req.setTripType("ONEWAY");
-        req.setTotalSeats(3);
-        req.setPrice(150.0);
-        req.setDepartureTime(LocalDateTime.of(2025,12,11,8,0));
-        req.setArrivalTime(LocalDateTime.of(2025,12,11,10,0));
+    void addInventory_happyPath_returnsId() {
+        when(flightRepository.existsByFlightNumberAndOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTime(
+                anyString(), anyString(), anyString(), any(LocalDateTime.class))).thenReturn(false);
 
-        when(flightRepository.save(any(Flight.class))).thenAnswer(inv -> {
+        when(flightRepository.save(Mockito.any(Flight.class))).thenAnswer(inv -> {
             Flight f = inv.getArgument(0);
-            f.setId(7L);
+            f.setId(5L); // simulate DB id
             return f;
         });
 
-        FlightResponseDto dto = flightService.addInventory(req);
-        assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(7L);
-        ArgumentCaptor<Flight> cap = ArgumentCaptor.forClass(Flight.class);
-        verify(flightRepository).save(cap.capture());
-        assertThat(cap.getValue().getSeats()).hasSize(3);
+        Long id = flightService.addInventory(baseReq);
+        assertThat(id).isEqualTo(5L);
+
+        // verify seats were created
+        ArgumentCaptor<Flight> captor = ArgumentCaptor.forClass(Flight.class);
+        verify(flightRepository).save(captor.capture());
+        Flight arg = captor.getValue();
+        assertThat(arg.getSeats()).hasSize(10);
+        assertThat(arg.getTripType()).isEqualTo("ONEWAY");
     }
 
     @Test
-    void searchFlights_filtersByTripType_andCountsAvailableSeats() {
+    void addInventory_duplicate_throwsConflict() {
+        when(flightRepository.existsByFlightNumberAndOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTime(
+                anyString(), anyString(), anyString(), any(LocalDateTime.class))).thenReturn(true);
+
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.addInventory(baseReq),
+                ResponseStatusException.class);
+        assertThat(ex).isNotNull();
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.CONFLICT.value());
+    }
+
+    @Test
+    void addInventory_arrivalBeforeDeparture_badRequest() {
+        baseReq.setArrival(baseReq.getDeparture().minusHours(1));
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.addInventory(baseReq),
+                ResponseStatusException.class);
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        // reason still available
+        assertThat(ex.getReason()).containsIgnoringCase("arrival must be after departure");
+    }
+
+    @Test
+    void addInventory_departureInPast_badRequest() {
+        baseReq.setDeparture(LocalDateTime.now().minusDays(1));
+        baseReq.setArrival(LocalDateTime.now().plusDays(1));
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.addInventory(baseReq),
+                ResponseStatusException.class);
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+        assertThat(ex.getReason()).containsIgnoringCase("departure cannot be in the past");
+    }
+
+    @Test
+    void addInventory_originEqualsDestination_badRequest() {
+        baseReq.setDestination(baseReq.getOrigin());
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.addInventory(baseReq),
+                ResponseStatusException.class);
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    }
+
+    @Test
+    void addInventory_negativeSeats_badRequest() {
+        baseReq.setTotalSeats(0);
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.addInventory(baseReq),
+                ResponseStatusException.class);
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value());
+    }
+
+    @Test
+    void searchFlights_filtersByTripType_and_returnsResults() {
+        SearchRequest sr = new SearchRequest();
+        sr.setOrigin("MAA");
+        sr.setDestination("CCU");
+        sr.setTravelDate(LocalDate.now().plusDays(2));
+        sr.setTripType("ONEWAY");
+
         Flight f = new Flight();
         f.setId(11L);
-        f.setOrigin("HYD");
-        f.setDestination("BLR");
+        f.setDepartureTime(LocalDateTime.now().plusDays(2).withHour(6));
+        f.setArrivalTime(LocalDateTime.now().plusDays(2).plusHours(2));
+        f.setAirlineName("SpiceJet");
+        f.setAirlineLogoUrl("u");
+        f.setPrice(100.0);
         f.setTripType("ONEWAY");
-        f.setDepartureTime(LocalDateTime.of(2025,12,10,9,0));
-        f.setArrivalTime(LocalDateTime.of(2025,12,10,11,0));
-        FlightSeat s1 = new FlightSeat();
-        s1.setStatus("AVAILABLE");
-        FlightSeat s2 = new FlightSeat();
-        s2.setStatus("BOOKED");
-        f.setSeats(List.of(s1,s2));
 
-        LocalDate date = LocalDate.of(2025,12,10);
-        LocalDateTime start = date.atStartOfDay();
-        LocalDateTime end = date.atTime(LocalTime.MAX);
+        FlightSeat s = new FlightSeat();
+        s.setSeatNumber("1");
+        s.setStatus("AVAILABLE");
+        f.setSeats(List.of(s));
 
         when(flightRepository.findByOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTimeBetween(
-                "HYD", "BLR", start, end))
+                anyString(), anyString(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(List.of(f));
 
-        SearchRequest req = new SearchRequest();
-        req.setOrigin("HYD");
-        req.setDestination("BLR");
-        req.setTravelDate(date);
-        req.setTripType("ONEWAY");
-
-        List<SearchResultDto> results = flightService.searchFlights(req);
+        List<com.flightservice.dto.SearchResultDto> results = flightService.searchFlights(sr);
         assertThat(results).hasSize(1);
-        SearchResultDto r = results.get(0);
-        assertThat(r.getFlightId()).isEqualTo(11L);
-        assertThat(r.getSeatsAvailable()).isEqualTo(1);
+        assertThat(results.get(0).getSeatsAvailable()).isEqualTo(1);
     }
 
     @Test
-    void getFlightDetailById_returnsDto_whenPresent() {
-        Flight f = new Flight();
-        f.setId(100L);
-        f.setFlightNumber("AI101");
-        f.setAirlineName("Air India");
-        f.setOrigin("HYD");
-        f.setDestination("DEL");
-        f.setDepartureTime(LocalDateTime.of(2025,12,12,6,0));
-        f.setArrivalTime(LocalDateTime.of(2025,12,12,8,0));
-        FlightSeat seat = new FlightSeat();
-        seat.setSeatNumber("1");
-        seat.setStatus("AVAILABLE");
-        f.setSeats(List.of(seat));
-
-        when(flightRepository.findById(100L)).thenReturn(Optional.of(f));
-
-        FlightDetailDto dto = flightService.getFlightDetailById(100L);
-        assertThat(dto).isNotNull();
-        assertThat(dto.getId()).isEqualTo(100L);
-        assertThat(dto.getSeats()).hasSize(1);
-        assertThat(dto.getSeats().get(0).getSeatNumber()).isEqualTo("1");
-
-        assertThat(dto.getInfo()).isNotNull();
-        assertThat(dto.getInfo().getFlightNumber()).isEqualTo("AI101");
-        assertThat(dto.getInfo().getAirlineName()).isEqualTo("Air India");
-    }
-
-    @Test
-    void getFlightDetailById_returnsNull_whenMissing() {
-        when(flightRepository.findById(999L)).thenReturn(Optional.empty());
-        FlightDetailDto dto = flightService.getFlightDetailById(999L);
-        assertThat(dto).isNull();
+    void searchFlights_nullRequest_badRequest() {
+        ResponseStatusException ex = catchThrowableOfType(() -> flightService.searchFlights(null),
+                ResponseStatusException.class);
+        assertThat(ex.getStatusCode().value()).isEqualTo(HttpStatus.BAD_REQUEST.value());
     }
 }

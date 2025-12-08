@@ -1,22 +1,14 @@
 package com.bookingservice.message;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.time.Instant;
-import java.util.List;
-
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class EmailMessage {
-    private String to;                // user email
+    private String to;
     private String subject;
     private String body;
-    private String pnr;
-    private Long flightId;
-    private Integer numSeats;
-    private List<String> seatNumbers;
-    private Instant createdAt;
 }

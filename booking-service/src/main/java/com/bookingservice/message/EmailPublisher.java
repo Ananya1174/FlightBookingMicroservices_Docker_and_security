@@ -1,8 +1,8 @@
 package com.bookingservice.message;
 
+import com.bookingservice.config.RabbitConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.core.AmqpTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -11,20 +11,14 @@ public class EmailPublisher {
 
     private final AmqpTemplate amqpTemplate;
 
-    @Value("${app.rabbitmq.exchange}")
-    private String exchange;
-
-    @Value("${app.rabbitmq.routing.booking.created}")
-    private String routingCreated;
-
-    @Value("${app.rabbitmq.routing.booking.cancelled}")
-    private String routingCancelled;
-
+    /**
+     * Send directly to queue by name. This avoids needing exchanges/bindings.
+     */
     public void publishBookingCreated(EmailMessage msg) {
-        amqpTemplate.convertAndSend(exchange, routingCreated, msg);
+        amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
     }
 
     public void publishBookingCancelled(EmailMessage msg) {
-        amqpTemplate.convertAndSend(exchange, routingCancelled, msg);
+        amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
     }
 }

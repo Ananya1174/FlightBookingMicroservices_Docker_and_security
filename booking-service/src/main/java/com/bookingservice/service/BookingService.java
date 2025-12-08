@@ -6,6 +6,8 @@ import com.bookingservice.dto.BookingRequest;
 import com.bookingservice.dto.BookingResponseDto;
 import com.bookingservice.dto.PersonDto;
 import com.bookingservice.dto.SeatDto;
+import com.bookingservice.message.EmailMessage;
+import com.bookingservice.message.EmailPublisher;
 import com.bookingservice.model.Booking;
 import com.bookingservice.model.Passenger;
 import com.bookingservice.repository.BookingRepository;
@@ -13,6 +15,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,11 +31,14 @@ public class BookingService {
 
     private final BookingRepository bookingRepository;
     private final FlightClientService flightClientService;
+    private final EmailPublisher emailPublisher;
 
     public BookingService(BookingRepository bookingRepository,
-                          FlightClientService flightClientService) {
+                          FlightClientService flightClientService,
+                          EmailPublisher emailPublisher) {
         this.bookingRepository = bookingRepository;
         this.flightClientService = flightClientService;
+        this.emailPublisher = emailPublisher;
     }
 
     /**
@@ -66,7 +73,7 @@ public class BookingService {
                 .map(String::toUpperCase)
                 .toList();
 
-        // Check DB for already-booked seats for this flight (atomic-ish check: repository query)
+        // Check DB for already-booked seats for this flight (repository query)
         checkRequestedSeatsAgainstExistingBookings(flightId, requestedSeatsUpper);
 
         // total price calculation
@@ -78,6 +85,36 @@ public class BookingService {
 
         log.info("Booking saved: pnr={}, flightId={}, user={}",
                 saved.getPnr(), saved.getFlightId(), saved.getUserEmail());
+
+        // Prepare email content
+        String to = saved.getUserEmail();
+        String subject = "Booking Confirmed: PNR " + saved.getPnr();
+        StringBuilder body = new StringBuilder();
+        body.append("Hi,\n\n");
+        body.append("Your booking is confirmed.\n\n");
+        body.append("PNR: ").append(saved.getPnr()).append("\n");
+        body.append("Flight ID: ").append(saved.getFlightId()).append("\n");
+        body.append("Seats: ").append(saved.getNumSeats()).append("\n");
+        body.append("Total: ").append(saved.getTotalPrice()).append("\n\n");
+        body.append("Passengers:\n");
+        for (Passenger p : Optional.ofNullable(saved.getPassengers()).orElse(Collections.emptyList())) {
+            body.append(" - ").append(p.getPassengerName())
+                .append(" / Seat: ").append(p.getSeatNumber() == null ? "-" : p.getSeatNumber())
+                .append("\n");
+        }
+        body.append("\nThanks,\nBooking Team");
+
+        EmailMessage emailMsg = new EmailMessage(to, subject, body.toString());
+
+        // Register send to happen AFTER transaction commit
+        registerAfterCommit(() -> {
+            try {
+                emailPublisher.publishBookingCreated(emailMsg);
+                log.info("Published booking-created email for PNR {}", saved.getPnr());
+            } catch (Exception ex) {
+                log.error("Failed to publish booking-created message for PNR {}: {}", saved.getPnr(), ex.toString(), ex);
+            }
+        });
 
         return convertToDto(saved);
     }
@@ -262,6 +299,22 @@ public class BookingService {
 
         log.info("Booking cancelled: pnr={}, flightId={}, user={}", saved.getPnr(), saved.getFlightId(), saved.getUserEmail());
 
+        // prepare cancel email
+        String to = saved.getUserEmail();
+        String subject = "Booking Cancelled: PNR " + saved.getPnr();
+        String body = "Hi,\n\nYour booking with PNR " + saved.getPnr() + " has been cancelled.\n\nThanks,\nBooking Team";
+        EmailMessage cancelMsg = new EmailMessage(to, subject, body);
+
+        // send after commit
+        registerAfterCommit(() -> {
+            try {
+                emailPublisher.publishBookingCancelled(cancelMsg);
+                log.info("Published booking-cancelled email for PNR {}", saved.getPnr());
+            } catch (Exception ex) {
+                log.error("Failed to publish booking-cancelled message for PNR {}: {}", saved.getPnr(), ex.toString(), ex);
+            }
+        });
+
         return convertToDto(saved);
     }
 
@@ -317,5 +370,30 @@ public class BookingService {
                 .replace("-", "")
                 .substring(0, 8)
                 .toUpperCase();
+    }
+
+    /**
+     * Utility to register a Runnable to run after the current transaction commits.
+     */
+    private void registerAfterCommit(Runnable r) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        r.run();
+                    } catch (Exception ex) {
+                        log.error("afterCommit task failed: {}", ex.toString(), ex);
+                    }
+                }
+            });
+        } else {
+            // No transaction active — run immediately
+            try {
+                r.run();
+            } catch (Exception ex) {
+                log.error("Immediate task failed: {}", ex.toString(), ex);
+            }
+        }
     }
 }

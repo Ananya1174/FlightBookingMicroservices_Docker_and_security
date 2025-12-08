@@ -5,7 +5,6 @@ import com.flightservice.model.FlightSeat;
 import com.flightservice.dto.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 public final class FlightMapper {
 
@@ -41,7 +40,7 @@ public final class FlightMapper {
         if (f.getSeats() != null) {
             seats = f.getSeats().stream()
                     .map(s -> new FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
         FlightDetailDto dto = new FlightDetailDto();
         dto.setId(f.getId());

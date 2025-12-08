@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class FlightService {
@@ -145,7 +144,7 @@ public class FlightService {
         if (!isBlank(req.getTripType())) {
             flights = flights.stream()
                     .filter(f -> req.getTripType().equalsIgnoreCase(f.getTripType()))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         return flights.stream().map(f -> {
@@ -161,6 +160,43 @@ public class FlightService {
                     .stream().filter(s -> STATUS_AVAILABLE.equalsIgnoreCase(s.getStatus())).count();
             r.setSeatsAvailable(available);
             return r;
-        }).collect(Collectors.toList());
+        }).toList();
+    }
+    @Transactional(readOnly = true)
+    public com.flightservice.dto.FlightDetailDto getDetailById(Long id) {
+        if (id == null) {
+            return null;
+        }
+
+        Optional<Flight> opt = flightRepository.findById(id);
+        if (opt.isEmpty()) {
+            return null;
+        }
+
+        Flight f = opt.get();
+
+        // Build FlightInfoDto (constructor order matches your FlightInfoDto fields)
+        com.flightservice.dto.FlightInfoDto info = new com.flightservice.dto.FlightInfoDto(
+                f.getFlightNumber(),
+                f.getAirlineName(),
+                f.getAirlineLogoUrl(),
+                f.getOrigin(),
+                f.getDestination(),
+                f.getDepartureTime(),
+                f.getArrivalTime(),
+                f.getPrice(),
+                f.getTripType(),
+                f.getTotalSeats()
+        );
+
+        // Map seats -> FlightDetailDto.SeatDto
+        List<com.flightservice.dto.FlightDetailDto.SeatDto> seats = Optional.ofNullable(f.getSeats())
+                .orElse(Collections.emptyList())
+                .stream()
+                .map(s -> new com.flightservice.dto.FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus()))
+                .toList();
+
+        // Return FlightDetailDto(id, info, seats)
+        return new com.flightservice.dto.FlightDetailDto(f.getId(), info, seats);
     }
 }

@@ -5,6 +5,7 @@ import com.bookingservice.client.dto.FlightDto;
 import com.bookingservice.dto.BookingRequest;
 import com.bookingservice.dto.BookingResponseDto;
 import com.bookingservice.dto.PersonDto;
+import com.bookingservice.dto.SeatDto;
 import com.bookingservice.model.Booking;
 import com.bookingservice.model.Passenger;
 import com.bookingservice.repository.BookingRepository;
@@ -18,18 +19,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.*;
+import java.util.stream.Collectors;
 
-/**
- * BookingService - refactored to reduce cognitive complexity.
- *
- * Responsibilities split into:
- *  - validateAndNormalizeRequest
- *  - fetchFlightOrThrow
- *  - ensureSeatAvailabilityOrThrow
- *  - buildBookingEntity
- *  - persistBooking
- *  - convertToDto
- */
 @Service
 public class BookingService {
 
@@ -56,24 +47,24 @@ public class BookingService {
                 headerEmail,
                 request == null ? null : request.getNumSeats());
 
-        
         validateAndNormalizeRequest(request, headerEmail);
 
         FlightDto flight = fetchFlightOrThrow(request.getFlightId());
 
-        ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
+        // Validate seat availability: aggregate check + specific seat checks (if seat numbers provided).
+        long availableSeats = ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
+        validateRequestedSeatNumbers(flight, request);
 
         double totalPrice = calculateTotalPrice(flight.getPrice(), request.getNumSeats());
 
         Booking booking = buildBookingEntity(request, totalPrice);
         Booking saved = persistBookingOrThrow(booking);
 
-        log.info("Booking saved: pnr={}, flightId={}, user={}", 
+        log.info("Booking saved: pnr={}, flightId={}, user={}",
                 saved.getPnr(), saved.getFlightId(), saved.getUserEmail());
 
         return convertToDto(saved);
     }
-
 
     private void validateAndNormalizeRequest(BookingRequest request, String headerEmail) {
         if (request == null) {
@@ -105,6 +96,17 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "number of passengers must match numSeats");
         }
+
+        // Validate passenger details basic sanity (name/age) - DTO annotations will also cover this if using @Valid
+        for (int i = 0; i < request.getPassengers().size(); i++) {
+            PersonDto p = request.getPassengers().get(i);
+            if (p.getName() == null || p.getName().isBlank()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passenger name is required for passenger index " + i);
+            }
+            if (p.getAge() == null || p.getAge() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passenger age must be > 0 for passenger " + p.getName());
+            }
+        }
     }
 
     private FlightDto fetchFlightOrThrow(Long flightId) {
@@ -122,7 +124,7 @@ public class BookingService {
 
         } catch (ResponseStatusException rse) {
             log.warn("Flight service returned an error for flightId={}: {}", flightId, rse.getReason());
-            throw rse; 
+            throw rse;
         } catch (Exception ex) {
             log.error("Unexpected error calling flight service for flightId={}", flightId, ex);
             throw new ResponseStatusException(
@@ -133,6 +135,10 @@ public class BookingService {
         }
     }
 
+    /**
+     * Ensure there are at least requestedSeats available overall.
+     * Returns available seats count.
+     */
     private long ensureSeatAvailabilityOrThrow(FlightDto flight, Integer requestedSeats) {
         long availableSeats = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList())
                 .stream()
@@ -144,6 +150,72 @@ public class BookingService {
                     "Not enough seats available: requested=" + requestedSeats + ", available=" + availableSeats);
         }
         return availableSeats;
+    }
+
+    /**
+     * If request includes per-passenger seatNumber(s), validate:
+     *  - no duplicate seat numbers in request
+     *  - each requested seat exists in flight.seats
+     *  - each requested seat status is AVAILABLE
+     *
+     * Throws ResponseStatusException with CONFLICT if any seat not available or invalid.
+     */
+    private void validateRequestedSeatNumbers(FlightDto flight, BookingRequest request) {
+        List<PersonDto> passengers = request.getPassengers();
+        // collect seat numbers provided (non-null/non-blank)
+        List<String> requestedSeats = passengers.stream()
+                .map(PersonDto::getSeatNumber)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::toUpperCase)
+                .toList();
+
+        if (requestedSeats.isEmpty()) {
+            // no specific seat selection provided - OK (user chooses later or system assigns)
+            return;
+        }
+
+        // duplicates in request?
+        Set<String> duplicates = requestedSeats.stream()
+                .collect(Collectors.groupingBy(s -> s, Collectors.counting()))
+                .entrySet().stream()
+                .filter(e -> e.getValue() > 1)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+
+        if (!duplicates.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Duplicate seat selection in request: " + duplicates);
+        }
+
+        // Build map of seatNumber -> SeatDto from flight
+        Map<String, SeatDto> flightSeatMap = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList())
+                .stream()
+                .filter(s -> s.getSeatNumber() != null)
+                .collect(Collectors.toMap(s -> s.getSeatNumber().toUpperCase(), s -> s, (a, b) -> a));
+
+        List<String> notFound = new ArrayList<>();
+        List<String> notAvailable = new ArrayList<>();
+
+        for (String seat : requestedSeats) {
+            SeatDto seatDto = flightSeatMap.get(seat);
+            if (seatDto == null) {
+                notFound.add(seat);
+            } else if (!"AVAILABLE".equalsIgnoreCase(Optional.ofNullable(seatDto.getStatus()).orElse(""))) {
+                notAvailable.add(seat);
+            }
+        }
+
+        if (!notFound.isEmpty() || !notAvailable.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            if (!notFound.isEmpty()) {
+                sb.append("Requested seats not found: ").append(notFound).append(". ");
+            }
+            if (!notAvailable.isEmpty()) {
+                sb.append("Requested seats not available: ").append(notAvailable).append(". ");
+            }
+            // Conflict - seats requested cannot be assigned
+            throw new ResponseStatusException(HttpStatus.CONFLICT, sb.toString().trim());
+        }
     }
 
     private double calculateTotalPrice(Double pricePerSeat, Integer numSeats) {
@@ -198,7 +270,6 @@ public class BookingService {
                 "Flight service unavailable. Try again later.");
     }
 
-
     @Transactional(readOnly = true)
     public BookingResponseDto getByPnr(String pnr) {
         Booking booking = bookingRepository.findByPnr(pnr)
@@ -212,22 +283,32 @@ public class BookingService {
         return list.stream().map(this::convertToDto).toList();
     }
 
+    /**
+     * Cancel a booking.
+     * Uses repository.cancelIfActive to atomically update the booking status to CANCELLED
+     * only if it was not already CANCELLED.
+     *
+     * If booking already cancelled -> throws 409 Conflict.
+     */
     @Transactional
     public BookingResponseDto cancelBooking(String pnr, String headerEmail) {
-        Booking booking = bookingRepository.findByPnr(pnr)
+        Booking existing = bookingRepository.findByPnr(pnr)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "PNR not found"));
 
-        if (!booking.getUserEmail().equalsIgnoreCase(headerEmail)) {
+        if (!existing.getUserEmail().equalsIgnoreCase(headerEmail)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the booking owner can cancel this booking");
         }
 
-        if ("CANCELLED".equalsIgnoreCase(booking.getStatus())) {
-            return convertToDto(booking);
+        // Attempt atomic cancel; repository method returns number of rows updated
+        int updated = bookingRepository.cancelIfActive(pnr, Instant.now());
+        if (updated == 0) {
+            // No update performed: booking was already cancelled (or status was CANCELLED)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking already cancelled");
         }
 
-        booking.setStatus("CANCELLED");
-        booking.setCancelledAt(Instant.now());
-        Booking saved = bookingRepository.save(booking);
+        // Fetch latest booking to return DTO
+        Booking saved = bookingRepository.findByPnr(pnr)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Booking disappeared after cancel"));
 
         log.info("Booking cancelled: pnr={}, flightId={}, user={}", saved.getPnr(), saved.getFlightId(), saved.getUserEmail());
 
@@ -261,7 +342,7 @@ public class BookingService {
     private String generatePnr() {
         return UUID.randomUUID()
                 .toString()
-                .replace("-", "")   
+                .replace("-", "")
                 .substring(0, 8)
                 .toUpperCase();
     }

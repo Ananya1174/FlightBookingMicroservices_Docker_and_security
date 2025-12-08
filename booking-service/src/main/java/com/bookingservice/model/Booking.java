@@ -38,6 +38,10 @@ public class Booking {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    // optimistic locking version column
+    @Version
+    private Long version;
+
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<Passenger> passengers;
 }

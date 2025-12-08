@@ -5,9 +5,9 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 
-@FeignClient(name = "flight-service", configuration = FlightClientConfig.class)
+@FeignClient(name = "FLIGHT-SERVICE", configuration = FlightClientConfig.class)
 public interface FlightClient {
 
-    @GetMapping("/api/flights/{id}")
+    @GetMapping("/api/flight/{id}")
     FlightDto getFlightById(@PathVariable("id") Long id);
 }

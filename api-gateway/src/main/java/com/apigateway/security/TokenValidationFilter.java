@@ -3,82 +3,109 @@ package com.apigateway.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
-import org.springframework.web.server.ServerWebExchange;
-import org.springframework.cloud.gateway.filter.GatewayFilterChain;
-import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.http.server.reactive.ServerHttpResponse;
+import org.springframework.web.server.ServerWebExchange;
+
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
+import org.springframework.cloud.gateway.filter.GlobalFilter;
+import org.springframework.cloud.gateway.filter.GatewayFilterChain;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 
 @Component
 public class TokenValidationFilter implements GlobalFilter, Ordered {
 
     private final WebClient webClient;
+    private final String authServiceBaseUrl;
 
-    @Value("${auth.service.url:http://localhost:8080}")
-    private String authServiceUrl;
-
-    public TokenValidationFilter(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.baseUrl("http://auth-service").build();
+    public TokenValidationFilter(WebClient webClient,
+                                 @Value("${auth.service.base-url:http://localhost:8085}") String authServiceBaseUrl) {
+        this.webClient = webClient;
+        this.authServiceBaseUrl = authServiceBaseUrl;
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        // Allow unauthenticated paths:
-        if (path.startsWith("/auth") || path.startsWith("/actuator") || path.startsWith("/favicon.ico")) {
+        // Allow auth routes and OPTIONS preflight through without validation
+        if (path.startsWith("/auth/") ||
+            (exchange.getRequest().getMethod() != null && exchange.getRequest().getMethod().equals(HttpMethod.OPTIONS))) {
+            // small logging to help debug
+            System.out.println("[Gateway] Allowing open path: " + exchange.getRequest().getMethod() + " " + path);
             return chain.filter(exchange);
         }
 
         String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+        System.out.println("[Gateway] Incoming request: " + exchange.getRequest().getMethod() + " " + path +
+                           " , Authorization present: " + (authHeader != null));
+
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return unauthorized(exchange);
+            exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+            return exchange.getResponse().setComplete();
         }
 
-        // Call auth service /auth/validate (pass Authorization header)
+        // Validate token by calling the auth service validate endpoint
         return webClient.get()
-                .uri(authServiceUrl + "/auth/validate")
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                .uri(authServiceBaseUrl + "/auth/validate")
                 .accept(MediaType.APPLICATION_JSON)
+                .header(HttpHeaders.AUTHORIZATION, authHeader)
                 .retrieve()
-                .bodyToMono(Map.class)
-                .flatMap(map -> {
-                    // Auth service returns object like { valid: true, email: "...", role: "...", jti: "..." }
-                    Boolean valid = (Boolean) map.get("valid");
-                    if (Boolean.TRUE.equals(valid)) {
-                        String email = (String) map.get("email");
-                        String role = (String) map.get("role");
-                        // attach headers for downstream services
-                        if (email != null) exchange.getRequest().mutate().header("X-User-Email", email);
-                        if (role != null) exchange.getRequest().mutate().header("X-User-Role", role);
-                        return chain.filter(exchange);
+                .bodyToMono(ValidateResponse.class)
+                .flatMap(validateResp -> {
+                    if (validateResp != null && validateResp.isValid()) {
+                        // --- IMPORTANT: explicitly forward the Authorization header downstream ---
+                        ServerHttpRequest mutatedReq = exchange.getRequest().mutate()
+                                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                                .build();
+
+                        // You can also forward additional headers if needed:
+                        // mutatedReq = mutatedReq.mutate().header("X-Forwarded-For", exchange.getRequest().getRemoteAddress().getAddress().getHostAddress()).build();
+
+                        ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedReq).build();
+
+                        System.out.println("[Gateway] Token valid for " + validateResp.getEmail() + " forwarding to: " + mutatedReq.getURI());
+                        return chain.filter(mutatedExchange);
                     } else {
-                        return unauthorized(exchange);
+                        exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                        return exchange.getResponse().setComplete();
                     }
                 })
-                .onErrorResume(err -> {
-                    // Treat any error contacting auth service as unauthorized (or SERVICE_UNAVAILABLE if you prefer)
-                    return unauthorized(exchange);
+                .onErrorResume(ex -> {
+                    System.out.println("[Gateway] Validate call failed: " + ex.getMessage());
+                    exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.UNAUTHORIZED);
+                    return exchange.getResponse().setComplete();
                 });
-    }
-
-    private Mono<Void> unauthorized(ServerWebExchange exchange) {
-        ServerHttpResponse resp = exchange.getResponse();
-        resp.setStatusCode(HttpStatus.UNAUTHORIZED);
-        resp.getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        byte[] bytes = ("{\"error\":\"Unauthorized\"}").getBytes();
-        return resp.writeWith(Mono.just(resp.bufferFactory().wrap(bytes)));
     }
 
     @Override
     public int getOrder() {
-        // run before many built-in filters
+        // run early before routing
         return -100;
+    }
+
+    // DTO matches your auth-service validate response
+    public static class ValidateResponse {
+        private boolean valid;
+        private String email;
+        private String role;
+        private String jti;
+
+        public ValidateResponse() {}
+
+        public boolean isValid() { return valid; }
+        public void setValid(boolean valid) { this.valid = valid; }
+
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+
+        public String getRole() { return role; }
+        public void setRole(String role) { this.role = role; }
+
+        public String getJti() { return jti; }
+        public void setJti(String jti) { this.jti = jti; }
     }
 }

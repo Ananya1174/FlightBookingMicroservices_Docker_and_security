@@ -11,7 +11,7 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
     @Column(nullable = false)
-    private String password; // bcrypt
+    private String password; 
     @Column(nullable = false)
-    private String role; // ROLE_USER or ROLE_ADMIN
+    private String role; 
 }

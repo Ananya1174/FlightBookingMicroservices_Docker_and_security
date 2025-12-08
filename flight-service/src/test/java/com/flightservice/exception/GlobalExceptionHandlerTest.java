@@ -16,77 +16,66 @@ import static org.mockito.Mockito.*;
 
 class GlobalExceptionHandlerTest {
 
-    private GlobalExceptionHandler handler;
+	private GlobalExceptionHandler handler;
 
-    @BeforeEach
-    void setUp() {
-        handler = new GlobalExceptionHandler();
-    }
+	@BeforeEach
+	void setUp() {
+		handler = new GlobalExceptionHandler();
+	}
 
-    @Test
-    void handleResponseStatus_createsCorrectBody_andStatus() {
-        ResponseStatusException ex = new ResponseStatusException(HttpStatus.NOT_FOUND, "flight not found");
+	@Test
+	void handleResponseStatus_createsCorrectBody_andStatus() {
+		ResponseStatusException ex = new ResponseStatusException(HttpStatus.NOT_FOUND, "flight not found");
 
-        var resp = handler.handleResponseStatus(ex);
+		var resp = handler.handleResponseStatus(ex);
 
-        assertThat(resp).isNotNull()
-                        .extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+		assertThat(resp).isNotNull().extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
-        Map<String, Object> body = resp.getBody();
-        assertThat(body).isNotNull()
-                        .containsEntry("status", HttpStatus.NOT_FOUND.value())
-                        .containsEntry("error", HttpStatus.NOT_FOUND.getReasonPhrase())
-                        .containsEntry("message", "flight not found");
+		Map<String, Object> body = resp.getBody();
+		assertThat(body).isNotNull().containsEntry("status", HttpStatus.NOT_FOUND.value())
+				.containsEntry("error", HttpStatus.NOT_FOUND.getReasonPhrase())
+				.containsEntry("message", "flight not found");
 
-        assertThat(body.get("timestamp")).isNotNull();
-    }
+		assertThat(body.get("timestamp")).isNotNull();
+	}
 
-    @Test
-    void handleValidation_returnsBadRequestWithErrors() {
-        // Mock MethodArgumentNotValidException and BindingResult
-        MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
-        BindingResult bindingResult = mock(BindingResult.class);
+	@Test
+	void handleValidation_returnsBadRequestWithErrors() {
 
-        FieldError fe = new FieldError("obj", "field1", "must not be blank");
-        when(bindingResult.getFieldErrors()).thenReturn(List.of(fe));
-        when(ex.getBindingResult()).thenReturn(bindingResult);
+		MethodArgumentNotValidException ex = mock(MethodArgumentNotValidException.class);
+		BindingResult bindingResult = mock(BindingResult.class);
 
-        var resp = handler.handleValidation(ex);
+		FieldError fe = new FieldError("obj", "field1", "must not be blank");
+		when(bindingResult.getFieldErrors()).thenReturn(List.of(fe));
+		when(ex.getBindingResult()).thenReturn(bindingResult);
 
-        assertThat(resp).isNotNull()
-                        .extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+		var resp = handler.handleValidation(ex);
 
-        Map<String, Object> body = resp.getBody();
-        assertThat(body).isNotNull()
-                        .containsEntry("status", HttpStatus.BAD_REQUEST.value())
-                        .containsEntry("error", HttpStatus.BAD_REQUEST.getReasonPhrase())
-                        .containsEntry("message", "Validation failed")
-                        .containsKey("errors");
+		assertThat(resp).isNotNull().extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
 
-        @SuppressWarnings("unchecked")
-        List<String> errors = (List<String>) body.get("errors");
-        assertThat(errors).hasSize(1)
-                          .first()
-                          .asString()
-                          .contains("field1")
-                          .contains("must not be blank");
-    }
+		Map<String, Object> body = resp.getBody();
+		assertThat(body).isNotNull().containsEntry("status", HttpStatus.BAD_REQUEST.value())
+				.containsEntry("error", HttpStatus.BAD_REQUEST.getReasonPhrase())
+				.containsEntry("message", "Validation failed").containsKey("errors");
 
-    @Test
-    void handleAny_returnsInternalServerError() {
-        RuntimeException rex = new RuntimeException("boom");
+		@SuppressWarnings("unchecked")
+		List<String> errors = (List<String>) body.get("errors");
+		assertThat(errors).hasSize(1).first().asString().contains("field1").contains("must not be blank");
+	}
 
-        var resp = handler.handleAny(rex);
+	@Test
+	void handleAny_returnsInternalServerError() {
+		RuntimeException rex = new RuntimeException("boom");
 
-        assertThat(resp).isNotNull()
-                        .extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+		var resp = handler.handleAny(rex);
 
-        Map<String, Object> body = resp.getBody();
-        assertThat(body).isNotNull()
-                        .containsEntry("status", HttpStatus.INTERNAL_SERVER_ERROR.value())
-                        .containsEntry("error", HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
-                        .containsEntry("message", "boom");
+		assertThat(resp).isNotNull().extracting(r -> r.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
 
-        assertThat(body.get("timestamp")).isNotNull();
-    }
+		Map<String, Object> body = resp.getBody();
+		assertThat(body).isNotNull().containsEntry("status", HttpStatus.INTERNAL_SERVER_ERROR.value())
+				.containsEntry("error", HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
+				.containsEntry("message", "boom");
+
+		assertThat(body.get("timestamp")).isNotNull();
+	}
 }

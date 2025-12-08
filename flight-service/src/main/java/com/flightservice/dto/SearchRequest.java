@@ -19,5 +19,5 @@ public class SearchRequest {
     @NotNull
     private LocalDate travelDate;
 
-    private String tripType; // optional
+    private String tripType; 
 }

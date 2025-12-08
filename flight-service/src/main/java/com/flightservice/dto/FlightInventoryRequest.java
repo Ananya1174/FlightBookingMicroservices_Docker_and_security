@@ -12,38 +12,37 @@ import java.time.LocalDateTime;
 @Builder
 public class FlightInventoryRequest {
 
-    @NotBlank
-    @JsonProperty("airline")
-    private String airline;
+	@NotBlank
+	@JsonProperty("airline")
+	private String airline;
 
-    @JsonProperty("airlineLogoUrl")
-    private String airlineLogoUrl;
+	@JsonProperty("airlineLogoUrl")
+	private String airlineLogoUrl;
 
-    @NotBlank
-    private String flightNumber;
+	@NotBlank
+	private String flightNumber;
 
-    @NotBlank
-    private String origin;
+	@NotBlank
+	private String origin;
 
-    @NotBlank
-    private String destination;
+	@NotBlank
+	private String destination;
 
-    @NotNull
-    @JsonProperty("departure")
-    private LocalDateTime departure;
+	@NotNull
+	@JsonProperty("departure")
+	private LocalDateTime departure;
 
-    @NotNull
-    @JsonProperty("arrival")
-    private LocalDateTime arrival;
+	@NotNull
+	@JsonProperty("arrival")
+	private LocalDateTime arrival;
 
-    @NotNull
-    @Positive
-    private Integer totalSeats;
+	@NotNull
+	@Positive
+	private Integer totalSeats;
 
-    @NotNull
-    @PositiveOrZero
-    private Double price;
+	@NotNull
+	@PositiveOrZero
+	private Double price;
 
-    // optional tripType; service will default to "ONEWAY" if missing
-    private String tripType;
+	private String tripType;
 }

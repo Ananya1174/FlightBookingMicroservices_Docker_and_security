@@ -1,9 +1,9 @@
 package com.bookingservice.client.dto;
 
 import com.bookingservice.dto.SeatDto;
-import java.time.LocalDateTime;
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import lombok.*;
+import java.util.List;
 
 @Getter
 @Setter
@@ -11,16 +11,22 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class FlightDto {
+
     private Long id;
-    private String flightNumber;
-    private String airlineName;
-    private String airlineLogoUrl;
-    private String origin;
-    private String destination;
-    private LocalDateTime departureTime;
-    private LocalDateTime arrivalTime;
-    private Double price;
-    private String tripType;
-    private Integer totalSeats;
+
+    // Tell Jackson to unwrap 'info' fields into this FlightDto so your code can call flight.getPrice()
+    @JsonUnwrapped
+    private FlightInfoDto info;
+
+    // seats JSON remains the same
     private List<SeatDto> seats;
+
+    // convenience methods (optional) so existing code keeps working
+    public Double getPrice() {
+        return info == null ? null : info.getPrice();
+    }
+    public String getFlightNumber() {
+        return info == null ? null : info.getFlightNumber();
+    }
+    // add other convenience getters if you rely on them elsewhere
 }

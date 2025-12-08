@@ -12,10 +12,7 @@ import lombok.*;
 @Builder
 public class BookingRequest {
 
-    private String userEmail; 
-
-    @NotNull
-    private Long flightId;
+    private String userEmail;
 
     @Positive
     private Integer numSeats;

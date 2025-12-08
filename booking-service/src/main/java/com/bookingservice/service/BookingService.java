@@ -1,6 +1,6 @@
 package com.bookingservice.service;
 
-import com.bookingservice.client.FlightClient;
+import com.bookingservice.client.FlightClientService;
 import com.bookingservice.client.dto.FlightDto;
 import com.bookingservice.dto.BookingRequest;
 import com.bookingservice.dto.BookingResponseDto;
@@ -9,7 +9,6 @@ import com.bookingservice.dto.SeatDto;
 import com.bookingservice.model.Booking;
 import com.bookingservice.model.Passenger;
 import com.bookingservice.repository.BookingRepository;
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -27,37 +26,54 @@ public class BookingService {
     private static final Logger log = LoggerFactory.getLogger(BookingService.class);
 
     private final BookingRepository bookingRepository;
-    private final FlightClient flightClient;
+    private final FlightClientService flightClientService;
 
     public BookingService(BookingRepository bookingRepository,
-                          FlightClient flightClient) {
+                          FlightClientService flightClientService) {
         this.bookingRepository = bookingRepository;
-        this.flightClient = flightClient;
+        this.flightClientService = flightClientService;
     }
 
     /**
      * Create a booking.
-     * CircuitBreaker will redirect to createBookingFallback(...) on failures of flightClient.
+     * flightId comes from the URL (controller path variable) and is passed here.
+     *
+     * IMPORTANT: No circuit-breaker on this method — protecting only the remote call avoids
+     * turning business errors (4xx) into fallback 503s.
      */
     @Transactional
-    @CircuitBreaker(name = "flightClient", fallbackMethod = "createBookingFallback")
-    public BookingResponseDto createBooking(BookingRequest request, String headerEmail) {
+    public BookingResponseDto createBooking(BookingRequest request, String headerEmail, Long flightId) {
         log.debug("createBooking called: flightId={}, headerEmail={}, numSeats={}",
-                request == null ? null : request.getFlightId(),
-                headerEmail,
+                flightId, headerEmail,
                 request == null ? null : request.getNumSeats());
 
         validateAndNormalizeRequest(request, headerEmail);
 
-        FlightDto flight = fetchFlightOrThrow(request.getFlightId());
+        // call wrapped flight client (circuit-breaker lives in FlightClientService)
+        FlightDto flight = flightClientService.getFlightById(flightId);
 
-        // Validate seat availability: aggregate check + specific seat checks (if seat numbers provided).
+        // Validate seat availability on flight (flight-level availability)
         long availableSeats = ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
+
+        // Validate requested seat numbers shape & that they exist / are available in flight seats
         validateRequestedSeatNumbers(flight, request);
 
+        // Build normalized requested seat list (trim + uppercase) for DB conflict check
+        List<String> requestedSeatsUpper = request.getPassengers().stream()
+                .map(PersonDto::getSeatNumber)
+                .filter(s -> s != null && !s.isBlank())
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .toList();
+
+        // Check DB for already-booked seats for this flight (atomic-ish check: repository query)
+        checkRequestedSeatsAgainstExistingBookings(flightId, requestedSeatsUpper);
+
+        // total price calculation
         double totalPrice = calculateTotalPrice(flight.getPrice(), request.getNumSeats());
 
-        Booking booking = buildBookingEntity(request, totalPrice);
+        // persist booking (passenger seat numbers will be normalized before saving)
+        Booking booking = buildBookingEntity(request, totalPrice, flightId);
         Booking saved = persistBookingOrThrow(booking);
 
         log.info("Booking saved: pnr={}, flightId={}, user={}",
@@ -66,6 +82,9 @@ public class BookingService {
         return convertToDto(saved);
     }
 
+    /**
+     * Validate request body + header. This method DOES NOT expect flightId inside the body.
+     */
     private void validateAndNormalizeRequest(BookingRequest request, String headerEmail) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
@@ -81,10 +100,6 @@ public class BookingService {
                     "Header user email must match request userEmail");
         }
 
-        if (request.getFlightId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "flightId is required");
-        }
-
         if (request.getNumSeats() == null || request.getNumSeats() <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "numSeats must be provided and > 0");
         }
@@ -97,7 +112,6 @@ public class BookingService {
                     "number of passengers must match numSeats");
         }
 
-        // Validate passenger details basic sanity (name/age) - DTO annotations will also cover this if using @Valid
         for (int i = 0; i < request.getPassengers().size(); i++) {
             PersonDto p = request.getPassengers().get(i);
             if (p.getName() == null || p.getName().isBlank()) {
@@ -109,36 +123,6 @@ public class BookingService {
         }
     }
 
-    private FlightDto fetchFlightOrThrow(Long flightId) {
-        try {
-            FlightDto flight = flightClient.getFlightById(flightId);
-
-            if (flight == null) {
-                throw new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Flight not found: " + flightId
-                );
-            }
-
-            return flight;
-
-        } catch (ResponseStatusException rse) {
-            log.warn("Flight service returned an error for flightId={}: {}", flightId, rse.getReason());
-            throw rse;
-        } catch (Exception ex) {
-            log.error("Unexpected error calling flight service for flightId={}", flightId, ex);
-            throw new ResponseStatusException(
-                    HttpStatus.SERVICE_UNAVAILABLE,
-                    "Error contacting flight service for flightId=" + flightId,
-                    ex
-            );
-        }
-    }
-
-    /**
-     * Ensure there are at least requestedSeats available overall.
-     * Returns available seats count.
-     */
     private long ensureSeatAvailabilityOrThrow(FlightDto flight, Integer requestedSeats) {
         long availableSeats = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList())
                 .stream()
@@ -152,17 +136,8 @@ public class BookingService {
         return availableSeats;
     }
 
-    /**
-     * If request includes per-passenger seatNumber(s), validate:
-     *  - no duplicate seat numbers in request
-     *  - each requested seat exists in flight.seats
-     *  - each requested seat status is AVAILABLE
-     *
-     * Throws ResponseStatusException with CONFLICT if any seat not available or invalid.
-     */
     private void validateRequestedSeatNumbers(FlightDto flight, BookingRequest request) {
         List<PersonDto> passengers = request.getPassengers();
-        // collect seat numbers provided (non-null/non-blank)
         List<String> requestedSeats = passengers.stream()
                 .map(PersonDto::getSeatNumber)
                 .filter(s -> s != null && !s.isBlank())
@@ -170,11 +145,9 @@ public class BookingService {
                 .toList();
 
         if (requestedSeats.isEmpty()) {
-            // no specific seat selection provided - OK (user chooses later or system assigns)
             return;
         }
 
-        // duplicates in request?
         Set<String> duplicates = requestedSeats.stream()
                 .collect(Collectors.groupingBy(s -> s, Collectors.counting()))
                 .entrySet().stream()
@@ -187,7 +160,6 @@ public class BookingService {
                     "Duplicate seat selection in request: " + duplicates);
         }
 
-        // Build map of seatNumber -> SeatDto from flight
         Map<String, SeatDto> flightSeatMap = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList())
                 .stream()
                 .filter(s -> s.getSeatNumber() != null)
@@ -213,7 +185,6 @@ public class BookingService {
             if (!notAvailable.isEmpty()) {
                 sb.append("Requested seats not available: ").append(notAvailable).append(". ");
             }
-            // Conflict - seats requested cannot be assigned
             throw new ResponseStatusException(HttpStatus.CONFLICT, sb.toString().trim());
         }
     }
@@ -223,22 +194,24 @@ public class BookingService {
         return price * numSeats;
     }
 
-    private Booking buildBookingEntity(BookingRequest request, double totalPrice) {
+    private Booking buildBookingEntity(BookingRequest request, double totalPrice, Long flightId) {
         Booking booking = new Booking();
         booking.setPnr(generatePnr());
-        booking.setFlightId(request.getFlightId());
+        booking.setFlightId(flightId);
         booking.setUserEmail(request.getUserEmail());
         booking.setNumSeats(request.getNumSeats());
         booking.setTotalPrice(totalPrice);
         booking.setStatus("ACTIVE");
         booking.setCreatedAt(Instant.now());
 
+        // Normalize seat numbers when persisting (trim + upper) so DB stores canonical values
         List<Passenger> passengers = request.getPassengers().stream().map(pdto -> {
             Passenger p = new Passenger();
             p.setPassengerName(pdto.getName());
             p.setGender(pdto.getGender());
             p.setAge(pdto.getAge());
-            p.setSeatNumber(pdto.getSeatNumber());
+            String seat = pdto.getSeatNumber();
+            p.setSeatNumber(seat == null ? null : seat.trim().toUpperCase());
             p.setMealPreference(pdto.getMealPreference());
             p.setBooking(booking);
             return p;
@@ -257,19 +230,6 @@ public class BookingService {
         }
     }
 
-    /**
-     * Resilience4j fallback method. Signature must match original method's parameters
-     * plus an additional Throwable at the end.
-     * We throw a Service Unavailable so controllers return 503.
-     */
-    public BookingResponseDto createBookingFallback(BookingRequest request, String headerEmail, Throwable t) {
-        log.warn("createBookingFallback called for flightId={} user={} : {}",
-                request == null ? null : request.getFlightId(),
-                headerEmail, t == null ? "null" : t.toString());
-        throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "Flight service unavailable. Try again later.");
-    }
-
     @Transactional(readOnly = true)
     public BookingResponseDto getByPnr(String pnr) {
         Booking booking = bookingRepository.findByPnr(pnr)
@@ -283,13 +243,6 @@ public class BookingService {
         return list.stream().map(this::convertToDto).toList();
     }
 
-    /**
-     * Cancel a booking.
-     * Uses repository.cancelIfActive to atomically update the booking status to CANCELLED
-     * only if it was not already CANCELLED.
-     *
-     * If booking already cancelled -> throws 409 Conflict.
-     */
     @Transactional
     public BookingResponseDto cancelBooking(String pnr, String headerEmail) {
         Booking existing = bookingRepository.findByPnr(pnr)
@@ -299,20 +252,39 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the booking owner can cancel this booking");
         }
 
-        // Attempt atomic cancel; repository method returns number of rows updated
         int updated = bookingRepository.cancelIfActive(pnr, Instant.now());
         if (updated == 0) {
-            // No update performed: booking was already cancelled (or status was CANCELLED)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking already cancelled");
         }
 
-        // Fetch latest booking to return DTO
         Booking saved = bookingRepository.findByPnr(pnr)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Booking disappeared after cancel"));
 
         log.info("Booking cancelled: pnr={}, flightId={}, user={}", saved.getPnr(), saved.getFlightId(), saved.getUserEmail());
 
         return convertToDto(saved);
+    }
+
+    /**
+     * Check requested seat numbers against existing active bookings (DB).
+     * Throws 409 if any conflict.
+     */
+    private void checkRequestedSeatsAgainstExistingBookings(Long flightId, List<String> requestedSeatsUpper) {
+        if (requestedSeatsUpper == null || requestedSeatsUpper.isEmpty()) return;
+
+        List<String> seatParam = requestedSeatsUpper.stream()
+                .map(s -> s == null ? "" : s.trim().toUpperCase())
+                .filter(s -> !s.isEmpty())
+                .toList();
+
+        if (seatParam.isEmpty()) return;
+
+        int conflicts = bookingRepository.countConflictingSeats(flightId, seatParam);
+        if (conflicts > 0) {
+            List<String> conflicting = bookingRepository.findConflictingSeatNumbers(flightId, seatParam);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Requested seat(s) already booked: " + conflicting);
+        }
     }
 
     private BookingResponseDto convertToDto(Booking b) {

@@ -33,22 +33,15 @@ public class BookingController {
             @Valid @RequestBody BookingRequest request,
             @RequestHeader(USER_HEADER) String userEmail) {
 
-        if (request.getUserEmail() == null || request.getUserEmail().isBlank()) {
-            request.setUserEmail(userEmail);
-        }
-
-        if (!flightId.equals(request.getFlightId())) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        BookingResponseDto resp = bookingService.createBooking(request, userEmail);
+        // Ensure header email is present; bookingService will normalize userEmail into request.
+        BookingResponseDto resp = bookingService.createBooking(request, userEmail, flightId);
 
         URI location = ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/api/flight/ticket/{pnr}")
                 .buildAndExpand(resp.getPnr())
                 .toUri();
 
-        return ResponseEntity.created(location).body(resp); 
+        return ResponseEntity.created(location).body(resp);
     }
 
     /**

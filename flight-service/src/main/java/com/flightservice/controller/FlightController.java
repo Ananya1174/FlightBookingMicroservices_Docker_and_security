@@ -3,6 +3,8 @@ package com.flightservice.controller;
 import com.flightservice.dto.*;
 import com.flightservice.service.FlightService;
 import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,7 +29,16 @@ public class FlightController {
      * Returns only created id in body and Location header /api/flight/{id}
      */
     @PostMapping("/airline/inventory/add")
-    public ResponseEntity<IdResponse> addInventory(@Valid @RequestBody FlightInventoryRequest req) {
+    public ResponseEntity<?> addInventory(
+            @RequestHeader(name = "X-User-Role", required = false) String role,
+            @Valid @RequestBody FlightInventoryRequest req) {
+
+        // required role prefix in your project is "ROLE_ADMIN"
+        if (role == null || !role.equals("ROLE_ADMIN")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                 .body(Map.of("error", "forbidden", "message", "admin role required"));
+        }
+
         Long id = flightService.addInventory(req);
         URI location = URI.create(String.format("/api/flight/%d", id));
         return ResponseEntity.created(location).body(new IdResponse(id));
@@ -39,7 +50,7 @@ public class FlightController {
     @PostMapping("/search")
     public ResponseEntity<List<SearchResultDto>> search(@Valid @RequestBody SearchRequest req) {
         List<SearchResultDto> results = flightService.searchFlights(req);
-        return ResponseEntity.ok(results);
+        return ResponseEntity.status(201).body(results);
     }
     /**
      * GET /api/flight/{id}

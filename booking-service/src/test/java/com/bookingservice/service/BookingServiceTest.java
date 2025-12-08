@@ -25,275 +25,275 @@ import static org.mockito.Mockito.*;
 @ExtendWith(org.mockito.junit.jupiter.MockitoExtension.class)
 class BookingServiceTest {
 
-    @Mock BookingRepository bookingRepository;
-    @Mock FlightClientService flightClientService;
-    @Mock EmailPublisher emailPublisher;
+	@Mock
+	BookingRepository bookingRepository;
+	@Mock
+	FlightClientService flightClientService;
+	@Mock
+	EmailPublisher emailPublisher;
 
-    @InjectMocks BookingService bookingService;
+	@InjectMocks
+	BookingService bookingService;
 
-    private FlightDto sampleFlight(Long flightId, int availableSeats, String seatPrefix) {
-        FlightInfoDto info = FlightInfoDto.builder()
-                .flightNumber("F123")
-                .airlineName("ACME")
-                .departureTime(LocalDateTime.now().plusDays(1))
-                .arrivalTime(LocalDateTime.now().plusDays(1).plusHours(2))
-                .price(100.0)
-                .totalSeats(availableSeats)
-                .build();
+	private FlightDto sampleFlight(Long flightId, int availableSeats, String seatPrefix) {
+		FlightInfoDto info = FlightInfoDto.builder().flightNumber("F123").airlineName("ACME")
+				.departureTime(LocalDateTime.now().plusDays(1))
+				.arrivalTime(LocalDateTime.now().plusDays(1).plusHours(2)).price(100.0).totalSeats(availableSeats)
+				.build();
 
-        List<SeatDto> seats = new ArrayList<>();
-        for (int i = 1; i <= availableSeats; i++) {
-            SeatDto s = new SeatDto();
-            s.setSeatNumber(seatPrefix + i);
-            s.setStatus("AVAILABLE");
-            seats.add(s);
-        }
-        FlightDto f = FlightDto.builder().id(flightId).info(info).seats(seats).build();
-        return f;
-    }
+		List<SeatDto> seats = new ArrayList<>();
+		for (int i = 1; i <= availableSeats; i++) {
+			SeatDto s = new SeatDto();
+			s.setSeatNumber(seatPrefix + i);
+			s.setStatus("AVAILABLE");
+			seats.add(s);
+		}
+		FlightDto f = FlightDto.builder().id(flightId).info(info).seats(seats).build();
+		return f;
+	}
 
-    private BookingRequest makeRequest(String userEmail, int numSeats, List<PersonDto> passengers) {
-        BookingRequest req = BookingRequest.builder()
-                .userEmail(userEmail)
-                .numSeats(numSeats)
-                .passengers(passengers)
-                .build();
-        return req;
-    }
+	private BookingRequest makeRequest(String userEmail, int numSeats, List<PersonDto> passengers) {
+		BookingRequest req = BookingRequest.builder().userEmail(userEmail).numSeats(numSeats).passengers(passengers)
+				.build();
+		return req;
+	}
 
-    private PersonDto person(String name, int age, String gender, String seat) {
-        return PersonDto.builder().name(name).age(age).gender(gender).seatNumber(seat).build();
-    }
+	private PersonDto person(String name, int age, String gender, String seat) {
+		return PersonDto.builder().name(name).age(age).gender(gender).seatNumber(seat).build();
+	}
 
-    @BeforeEach
-    void setup() {
-        // default no-op
-    }
+	@BeforeEach
+	void setup() {
+		// default no-op
+	}
 
-    @Test
-    void createBooking_success_shouldPersistAndSendEmail() {
-        Long flightId = 11L;
-        FlightDto flight = sampleFlight(flightId, 5, "A");
-        when(flightClientService.getFlightById(flightId)).thenReturn(flight);
-        when(bookingRepository.countConflictingSeats(anyLong(), anyList())).thenReturn(0);
-        when(bookingRepository.findConflictingSeatNumbers(anyLong(), anyList())).thenReturn(Collections.emptyList());
+	@Test
+	void createBooking_success_shouldPersistAndSendEmail() {
+		Long flightId = 11L;
+		FlightDto flight = sampleFlight(flightId, 5, "A");
+		when(flightClientService.getFlightById(flightId)).thenReturn(flight);
+		when(bookingRepository.countConflictingSeats(anyLong(), anyList())).thenReturn(0);
+		when(bookingRepository.findConflictingSeatNumbers(anyLong(), anyList())).thenReturn(Collections.emptyList());
 
-        List<PersonDto> p = List.of(person("Alice", 30, "F", "A1"), person("Bob", 28, "M", "A2"));
-        BookingRequest req = makeRequest(null, 2, p);
+		List<PersonDto> p = List.of(person("Alice", 30, "F", "A1"), person("Bob", 28, "M", "A2"));
+		BookingRequest req = makeRequest(null, 2, p);
 
-        // mimic repository.save returning booking with same values
-        ArgumentCaptor<Booking> cap = ArgumentCaptor.forClass(Booking.class);
-        when(bookingRepository.save(cap.capture())).thenAnswer(invocation -> {
-            Booking b = cap.getValue();
-            // emulate DB assigned id and keep fields
-            b.setId(100L);
-            // ensure passengers get booking link
-            if (b.getPassengers() != null) {
-                for (Passenger passenger : b.getPassengers()) passenger.setBooking(b);
-            }
-            return b;
-        });
+		ArgumentCaptor<Booking> cap = ArgumentCaptor.forClass(Booking.class);
+		when(bookingRepository.save(cap.capture())).thenAnswer(invocation -> {
+			Booking b = cap.getValue();
 
-        var dto = bookingService.createBooking(req, "user@example.com", flightId);
+			b.setId(100L);
 
-        assertThat(dto).isNotNull();
-        assertThat(dto.getFlightId()).isEqualTo(flightId);
-        assertThat(dto.getNumSeats()).isEqualTo(2);
-        assertThat(dto.getUserEmail()).isEqualTo("user@example.com");
-        assertThat(dto.getPassengers()).hasSize(2);
-        verify(emailPublisher, times(1)).publishBookingCreated(any(EmailMessage.class));
-        verify(bookingRepository, times(1)).save(any(Booking.class));
-    }
+			if (b.getPassengers() != null) {
+				for (Passenger passenger : b.getPassengers())
+					passenger.setBooking(b);
+			}
+			return b;
+		});
 
-    @Test
-    void createBooking_nullRequest_throwsBadRequest() {
-        assertThatThrownBy(() -> bookingService.createBooking(null, "u@x.com", 1L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
-    }
+		var dto = bookingService.createBooking(req, "user@example.com", flightId);
 
-    @Test
-    void createBooking_headerMissing_throwsBadRequest() {
-        List<PersonDto> p = List.of(person("A", 20, "M", null));
-        BookingRequest req = makeRequest(null, 1, p);
-        assertThatThrownBy(() -> bookingService.createBooking(req, null, 1L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
-    }
+		assertThat(dto).isNotNull();
+		assertThat(dto.getFlightId()).isEqualTo(flightId);
+		assertThat(dto.getNumSeats()).isEqualTo(2);
+		assertThat(dto.getUserEmail()).isEqualTo("user@example.com");
+		assertThat(dto.getPassengers()).hasSize(2);
+		verify(emailPublisher, times(1)).publishBookingCreated(any(EmailMessage.class));
+		verify(bookingRepository, times(1)).save(any(Booking.class));
+	}
 
-    @Test
-    void createBooking_headerMismatch_throwsBadRequest() {
-        List<PersonDto> p = List.of(person("A", 20, "M", null));
-        BookingRequest req = makeRequest("other@example.com", 1, p);
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 1L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
-    }
+	@Test
+	void createBooking_nullRequest_throwsBadRequest() {
+		assertThatThrownBy(() -> bookingService.createBooking(null, "u@x.com", 1L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+	}
 
-    @Test
-    void createBooking_numSeatsMismatch_throwsBadRequest() {
-        List<PersonDto> p = List.of(person("A", 20, "M", null));
-        BookingRequest req = makeRequest(null, 2, p);
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 1L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
-    }
+	@Test
+	void createBooking_headerMissing_throwsBadRequest() {
+		List<PersonDto> p = List.of(person("A", 20, "M", null));
+		BookingRequest req = makeRequest(null, 1, p);
+		assertThatThrownBy(() -> bookingService.createBooking(req, null, 1L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+	}
 
-    @Test
-    void createBooking_notEnoughSeats_throwsConflict() {
-        FlightDto flight = sampleFlight(2L, 1, "A"); // only 1 available
-        when(flightClientService.getFlightById(2L)).thenReturn(flight);
+	@Test
+	void createBooking_headerMismatch_throwsBadRequest() {
+		List<PersonDto> p = List.of(person("A", 20, "M", null));
+		BookingRequest req = makeRequest("other@example.com", 1, p);
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 1L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+	}
 
-        List<PersonDto> p = List.of(person("A", 20, "M", null), person("B", 21, "F", null));
-        BookingRequest req = makeRequest(null, 2, p);
+	@Test
+	void createBooking_numSeatsMismatch_throwsBadRequest() {
+		List<PersonDto> p = List.of(person("A", 20, "M", null));
+		BookingRequest req = makeRequest(null, 2, p);
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 1L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+	}
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "u@x.com", 2L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
-    }
+	@Test
+	void createBooking_notEnoughSeats_throwsConflict() {
+		FlightDto flight = sampleFlight(2L, 1, "A"); // only 1 available
+		when(flightClientService.getFlightById(2L)).thenReturn(flight);
 
-    @Test
-    void createBooking_duplicateSeatsInRequest_throwsBadRequest() {
-        FlightDto flight = sampleFlight(3L, 5, "A");
-        when(flightClientService.getFlightById(3L)).thenReturn(flight);
+		List<PersonDto> p = List.of(person("A", 20, "M", null), person("B", 21, "F", null));
+		BookingRequest req = makeRequest(null, 2, p);
 
-        List<PersonDto> p = List.of(person("A", 20, "M", "A1"), person("B", 21, "F", "A1"));
-        BookingRequest req = makeRequest(null, 2, p);
+		assertThatThrownBy(() -> bookingService.createBooking(req, "u@x.com", 2L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
+	}
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "u@x.com", 3L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
-    }
+	@Test
+	void createBooking_duplicateSeatsInRequest_throwsBadRequest() {
+		FlightDto flight = sampleFlight(3L, 5, "A");
+		when(flightClientService.getFlightById(3L)).thenReturn(flight);
 
-    @Test
-    void createBooking_requestedSeatNotFound_throwsConflict() {
-        // flight has seats A1..A3
-        FlightDto flight = sampleFlight(4L, 3, "A");
-        when(flightClientService.getFlightById(4L)).thenReturn(flight);
+		List<PersonDto> p = List.of(person("A", 20, "M", "A1"), person("B", 21, "F", "A1"));
+		BookingRequest req = makeRequest(null, 2, p);
 
-        List<PersonDto> p = List.of(person("A", 20, "M", "Z1"));
-        BookingRequest req = makeRequest(null,1,p);
+		assertThatThrownBy(() -> bookingService.createBooking(req, "u@x.com", 3L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+	}
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 4L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
-    }
+	@Test
+	void createBooking_requestedSeatNotFound_throwsConflict() {
 
-    @Test
-    void createBooking_requestedSeatNotAvailable_throwsConflict() {
-        FlightDto flight = sampleFlight(5L, 3, "A");
-        // make A2 not available
-        flight.getSeats().get(1).setStatus("BOOKED");
-        when(flightClientService.getFlightById(5L)).thenReturn(flight);
+		FlightDto flight = sampleFlight(4L, 3, "A");
+		when(flightClientService.getFlightById(4L)).thenReturn(flight);
 
-        List<PersonDto> p = List.of(person("A", 20, "M", "A2"));
-        BookingRequest req = makeRequest(null,1,p);
+		List<PersonDto> p = List.of(person("A", 20, "M", "Z1"));
+		BookingRequest req = makeRequest(null, 1, p);
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 5L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
-    }
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 4L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
+	}
 
-    @Test
-    void createBooking_conflictingSeatsInDb_throwsConflict() {
-        FlightDto flight = sampleFlight(6L, 5, "A");
-        when(flightClientService.getFlightById(6L)).thenReturn(flight);
-        when(bookingRepository.countConflictingSeats(eq(6L), anyList())).thenReturn(1);
-        when(bookingRepository.findConflictingSeatNumbers(eq(6L), anyList())).thenReturn(List.of("A1"));
+	@Test
+	void createBooking_requestedSeatNotAvailable_throwsConflict() {
+		FlightDto flight = sampleFlight(5L, 3, "A");
 
-        List<PersonDto> p = List.of(person("A", 20, "M", "A1"));
-        BookingRequest req = makeRequest(null,1,p);
+		flight.getSeats().get(1).setStatus("BOOKED");
+		when(flightClientService.getFlightById(5L)).thenReturn(flight);
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 6L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
-    }
+		List<PersonDto> p = List.of(person("A", 20, "M", "A2"));
+		BookingRequest req = makeRequest(null, 1, p);
 
-    @Test
-    void createBooking_persistThrows_internalServerError() {
-        FlightDto flight = sampleFlight(7L, 5, "A");
-        when(flightClientService.getFlightById(7L)).thenReturn(flight);
-        when(bookingRepository.countConflictingSeats(anyLong(), anyList())).thenReturn(0);
-        when(bookingRepository.save(any())).thenThrow(new RuntimeException("DB down"));
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 5L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
+	}
 
-        List<PersonDto> p = List.of(person("A", 20, "M", "A1"));
-        BookingRequest req = makeRequest(null,1,p);
+	@Test
+	void createBooking_conflictingSeatsInDb_throwsConflict() {
+		FlightDto flight = sampleFlight(6L, 5, "A");
+		when(flightClientService.getFlightById(6L)).thenReturn(flight);
+		when(bookingRepository.countConflictingSeats(eq(6L), anyList())).thenReturn(1);
+		when(bookingRepository.findConflictingSeatNumbers(eq(6L), anyList())).thenReturn(List.of("A1"));
 
-        assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 7L))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(500));
-    }
+		List<PersonDto> p = List.of(person("A", 20, "M", "A1"));
+		BookingRequest req = makeRequest(null, 1, p);
 
-    @Test
-    void getByPnr_success_and_notFound() {
-        Booking b = new Booking();
-        b.setPnr("PNR1234");
-        b.setFlightId(1L);
-        b.setUserEmail("u@x.com");
-        b.setNumSeats(1);
-        b.setStatus("ACTIVE");
-        b.setPassengers(Collections.emptyList());
-        when(bookingRepository.findByPnr("PNR1234")).thenReturn(Optional.of(b));
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 6L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
+	}
 
-        var dto = bookingService.getByPnr("PNR1234");
-        assertThat(dto).isNotNull();
-        assertThat(dto.getPnr()).isEqualTo("PNR1234");
+	@Test
+	void createBooking_persistThrows_internalServerError() {
+		FlightDto flight = sampleFlight(7L, 5, "A");
+		when(flightClientService.getFlightById(7L)).thenReturn(flight);
+		when(bookingRepository.countConflictingSeats(anyLong(), anyList())).thenReturn(0);
+		when(bookingRepository.save(any())).thenThrow(new RuntimeException("DB down"));
 
-        when(bookingRepository.findByPnr("NOTFOUND")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> bookingService.getByPnr("NOTFOUND"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
-    }
+		List<PersonDto> p = List.of(person("A", 20, "M", "A1"));
+		BookingRequest req = makeRequest(null, 1, p);
 
-    @Test
-    void getHistoryByEmail_returnsList() {
-        Booking b1 = new Booking(); b1.setPnr("P1"); b1.setUserEmail("a@b.com"); b1.setCreatedAt(Instant.now());
-        Booking b2 = new Booking(); b2.setPnr("P2"); b2.setUserEmail("a@b.com"); b2.setCreatedAt(Instant.now().minusSeconds(60));
-        when(bookingRepository.findByUserEmailOrderByCreatedAtDesc("a@b.com")).thenReturn(List.of(b1,b2));
+		assertThatThrownBy(() -> bookingService.createBooking(req, "user@example.com", 7L))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(500));
+	}
 
-        var res = bookingService.getHistoryByEmail("a@b.com");
-        assertThat(res).hasSize(2);
-        assertThat(res.get(0).getPnr()).isEqualTo("P1");
-    }
+	@Test
+	void getByPnr_success_and_notFound() {
+		Booking b = new Booking();
+		b.setPnr("PNR1234");
+		b.setFlightId(1L);
+		b.setUserEmail("u@x.com");
+		b.setNumSeats(1);
+		b.setStatus("ACTIVE");
+		b.setPassengers(Collections.emptyList());
+		when(bookingRepository.findByPnr("PNR1234")).thenReturn(Optional.of(b));
 
-    @Test
-    void cancelBooking_notFound_and_forbidden_and_alreadyCancelled_and_success() {
-        when(bookingRepository.findByPnr("MISSING")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> bookingService.cancelBooking("MISSING", "u@x.com"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException)ex).getStatusCode().value()).isEqualTo(404));
+		var dto = bookingService.getByPnr("PNR1234");
+		assertThat(dto).isNotNull();
+		assertThat(dto.getPnr()).isEqualTo("PNR1234");
 
-        Booking existing = new Booking();
-        existing.setPnr("PXY");
-        existing.setUserEmail("owner@x.com");
-        existing.setStatus("ACTIVE");
-        when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
+		when(bookingRepository.findByPnr("NOTFOUND")).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> bookingService.getByPnr("NOTFOUND")).isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+	}
 
-        // forbidden case
-        assertThatThrownBy(() -> bookingService.cancelBooking("PXY", "other@x.com"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException)ex).getStatusCode().value()).isEqualTo(403));
+	@Test
+	void getHistoryByEmail_returnsList() {
+		Booking b1 = new Booking();
+		b1.setPnr("P1");
+		b1.setUserEmail("a@b.com");
+		b1.setCreatedAt(Instant.now());
+		Booking b2 = new Booking();
+		b2.setPnr("P2");
+		b2.setUserEmail("a@b.com");
+		b2.setCreatedAt(Instant.now().minusSeconds(60));
+		when(bookingRepository.findByUserEmailOrderByCreatedAtDesc("a@b.com")).thenReturn(List.of(b1, b2));
 
-        // already cancelled case
-        when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
-        // header match now
-        // make cancelIfActive return 0
-        when(bookingRepository.cancelIfActive("PXY", any())).thenReturn(0);
-        assertThatThrownBy(() -> bookingService.cancelBooking("PXY", "owner@x.com"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException)ex).getStatusCode().value()).isEqualTo(409));
+		var res = bookingService.getHistoryByEmail("a@b.com");
+		assertThat(res).hasSize(2);
+		assertThat(res.get(0).getPnr()).isEqualTo("P1");
+	}
 
-        // success case
-        existing.setStatus("ACTIVE");
-        when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
-        when(bookingRepository.cancelIfActive("PXY", any())).thenReturn(1);
-        Booking after = new Booking();
-        after.setPnr("PXY"); after.setStatus("CANCELLED"); after.setUserEmail("owner@x.com");
-        when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(after));
+	@Test
+	void cancelBooking_notFound_and_forbidden_and_alreadyCancelled_and_success() {
+		when(bookingRepository.findByPnr("MISSING")).thenReturn(Optional.empty());
+		assertThatThrownBy(() -> bookingService.cancelBooking("MISSING", "u@x.com"))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
 
-        var dto = bookingService.cancelBooking("PXY", "owner@x.com");
-        assertThat(dto).isNotNull();
-        assertThat(dto.getStatus()).isEqualTo("CANCELLED");
-        verify(emailPublisher, times(1)).publishBookingCancelled(any(EmailMessage.class));
-    }
+		Booking existing = new Booking();
+		existing.setPnr("PXY");
+		existing.setUserEmail("owner@x.com");
+		existing.setStatus("ACTIVE");
+		when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
+
+		assertThatThrownBy(() -> bookingService.cancelBooking("PXY", "other@x.com"))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+
+		when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
+
+		when(bookingRepository.cancelIfActive("PXY", any())).thenReturn(0);
+		assertThatThrownBy(() -> bookingService.cancelBooking("PXY", "owner@x.com"))
+				.isInstanceOf(ResponseStatusException.class)
+				.satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(409));
+
+		existing.setStatus("ACTIVE");
+		when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(existing));
+		when(bookingRepository.cancelIfActive("PXY", any())).thenReturn(1);
+		Booking after = new Booking();
+		after.setPnr("PXY");
+		after.setStatus("CANCELLED");
+		after.setUserEmail("owner@x.com");
+		when(bookingRepository.findByPnr("PXY")).thenReturn(Optional.of(after));
+
+		var dto = bookingService.cancelBooking("PXY", "owner@x.com");
+		assertThat(dto).isNotNull();
+		assertThat(dto.getStatus()).isEqualTo("CANCELLED");
+		verify(emailPublisher, times(1)).publishBookingCancelled(any(EmailMessage.class));
+	}
 }

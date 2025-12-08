@@ -38,7 +38,6 @@ public class Booking {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
-    // optimistic locking version column
     @Version
     private Long version;
 

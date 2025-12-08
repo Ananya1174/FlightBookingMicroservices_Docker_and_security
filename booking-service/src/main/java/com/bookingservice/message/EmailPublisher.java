@@ -9,16 +9,13 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class EmailPublisher {
 
-    private final AmqpTemplate amqpTemplate;
+	private final AmqpTemplate amqpTemplate;
 
-    /**
-     * Send directly to queue by name. This avoids needing exchanges/bindings.
-     */
-    public void publishBookingCreated(EmailMessage msg) {
-        amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
-    }
+	public void publishBookingCreated(EmailMessage msg) {
+		amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
+	}
 
-    public void publishBookingCancelled(EmailMessage msg) {
-        amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
-    }
+	public void publishBookingCancelled(EmailMessage msg) {
+		amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
+	}
 }

@@ -1,6 +1,7 @@
 package com.notificationservice.listener;
 
-import com.notificationservice.dto.EmailMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.notificationservice.message.EmailMessage;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -10,21 +11,31 @@ import org.springframework.stereotype.Service;
 public class EmailListener {
 
     private final JavaMailSender mailSender;
+    private final ObjectMapper objectMapper;
 
-    public EmailListener(JavaMailSender mailSender) {
+    public EmailListener(JavaMailSender mailSender, ObjectMapper objectMapper) {
         this.mailSender = mailSender;
+        this.objectMapper = objectMapper;
     }
 
+    // Accept JSON string payload (safer / easier than converting headers/types)
     @RabbitListener(queues = "email.queue")
-    public void receive(EmailMessage message) {
+    public void receive(String jsonPayload) {
+        try {
+            EmailMessage message = objectMapper.readValue(jsonPayload, EmailMessage.class);
 
-        SimpleMailMessage mail = new SimpleMailMessage();
-        mail.setTo(message.getTo());
-        mail.setSubject(message.getSubject());
-        mail.setText(message.getBody());
+            SimpleMailMessage mail = new SimpleMailMessage();
+            mail.setTo(message.getTo());
+            mail.setSubject(message.getSubject());
+            mail.setText(message.getBody());
 
-        mailSender.send(mail);
+            mailSender.send(mail);
 
-        System.out.println("Email sent to: " + message.getTo());
+            System.out.println("Email sent to: " + message.getTo());
+        } catch (Exception ex) {
+            // log the exception and rethrow (so Rabbit will handle DLQ/retries according to container config)
+            ex.printStackTrace();
+            throw new RuntimeException("Failed to process email message", ex);
+        }
     }
 }

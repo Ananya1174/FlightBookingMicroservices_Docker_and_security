@@ -36,7 +36,7 @@ public class AuthController {
         if (userRepo.existsByEmail(req.getEmail())) return ResponseEntity.badRequest().body(Map.of("error","email exists"));
         String role = (req.getRole() == null || req.getRole().isBlank()) ? "ROLE_USER" : req.getRole();
         User u = authService.createUser(req.getEmail(), req.getPassword(), role);
-        return ResponseEntity.ok(Map.of("message","created","email",u.getEmail()));
+        return ResponseEntity.status(201).body(Map.of("message", "created", "email", u.getEmail()));
     }
 
     @PostMapping("/signin")

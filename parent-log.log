@@ -1,0 +1,388 @@
+time="2025-12-08T23:13:10+05:30" level=warning msg="/Users/ananyaarisenapalli/workspace-spring-tools-for-eclipse-4.32.2.RELEASE/FlightBookingMicro/docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+#1 [internal] load local bake definitions
+#1 reading from stdin 4.57kB done
+#1 DONE 0.0s
+
+#2 [flight-service internal] load build definition from Dockerfile
+#2 transferring dockerfile: 447B done
+#2 DONE 0.0s
+
+#3 [api-gateway internal] load build definition from Dockerfile
+#3 transferring dockerfile: 447B done
+#3 DONE 0.0s
+
+#4 [config-server internal] load build definition from Dockerfile
+#4 transferring dockerfile: 447B 0.0s done
+#4 DONE 0.0s
+
+#5 [notification-service internal] load build definition from Dockerfile
+#5 transferring dockerfile: 447B 0.0s done
+#5 DONE 0.0s
+
+#6 [booking-service internal] load build definition from Dockerfile
+#6 transferring dockerfile: 447B done
+#6 DONE 0.0s
+
+#7 [auth-service internal] load build definition from Dockerfile
+#7 transferring dockerfile: 447B done
+#7 DONE 0.0s
+
+#8 [service-registry internal] load build definition from Dockerfile
+#8 transferring dockerfile: 447B done
+#8 DONE 0.0s
+
+#9 [booking-service internal] load metadata for docker.io/library/maven:3.9.6-eclipse-temurin-17
+#9 ...
+
+#10 [auth] library/eclipse-temurin:pull token for registry-1.docker.io
+#10 DONE 0.0s
+
+#11 [auth] library/maven:pull token for registry-1.docker.io
+#11 DONE 0.0s
+
+#12 [booking-service internal] load metadata for docker.io/library/eclipse-temurin:17-jre
+#12 DONE 2.0s
+
+#9 [api-gateway internal] load metadata for docker.io/library/maven:3.9.6-eclipse-temurin-17
+#9 DONE 2.0s
+
+#13 [booking-service internal] load .dockerignore
+#13 transferring context: 2B done
+#13 DONE 0.0s
+
+#14 [flight-service internal] load .dockerignore
+#14 transferring context: 2B done
+#14 DONE 0.0s
+
+#15 [config-server internal] load .dockerignore
+#15 transferring context: 2B done
+#15 DONE 0.0s
+
+#16 [api-gateway internal] load .dockerignore
+#16 transferring context: 2B done
+#16 DONE 0.0s
+
+#17 [auth-service internal] load .dockerignore
+#17 transferring context: 2B done
+#17 DONE 0.0s
+
+#18 [service-registry internal] load .dockerignore
+#18 transferring context: 2B done
+#18 DONE 0.0s
+
+#19 [notification-service internal] load .dockerignore
+#19 transferring context: 2B done
+#19 DONE 0.0s
+
+#20 [api-gateway builder 1/8] FROM docker.io/library/maven:3.9.6-eclipse-temurin-17@sha256:29a1658b1f3078e07c2b17f7b519b45eb47f65d9628e887eac45a8c5c8f939d4
+#20 resolve docker.io/library/maven:3.9.6-eclipse-temurin-17@sha256:29a1658b1f3078e07c2b17f7b519b45eb47f65d9628e887eac45a8c5c8f939d4 0.0s done
+#20 DONE 0.0s
+
+#21 [api-gateway stage-1 1/3] FROM docker.io/library/eclipse-temurin:17-jre@sha256:75ab7d1b4b18483e9245342cbee253b558952c1def5c1c18956196330a01683e
+#21 resolve docker.io/library/eclipse-temurin:17-jre@sha256:75ab7d1b4b18483e9245342cbee253b558952c1def5c1c18956196330a01683e 0.0s done
+#21 DONE 0.0s
+
+#22 [config-server internal] load build context
+#22 transferring context: 837B done
+#22 DONE 0.0s
+
+#23 [api-gateway internal] load build context
+#23 transferring context: 1.14kB done
+#23 DONE 0.0s
+
+#24 [notification-service internal] load build context
+#24 transferring context: 1.35kB done
+#24 DONE 0.0s
+
+#25 [auth-service internal] load build context
+#25 transferring context: 1.98kB done
+#25 DONE 0.0s
+
+#26 [service-registry internal] load build context
+#26 transferring context: 914B done
+#26 DONE 0.0s
+
+#27 [booking-service internal] load build context
+#27 transferring context: 3.60kB 0.0s done
+#27 DONE 0.0s
+
+#28 [flight-service internal] load build context
+#28 transferring context: 3.26kB 0.0s done
+#28 DONE 0.0s
+
+#29 [config-server builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#29 CACHED
+
+#30 [config-server builder 8/8] RUN mvn -B -DskipTests package
+#30 CACHED
+
+#31 [config-server builder 4/8] COPY .mvn .mvn
+#31 CACHED
+
+#32 [config-server builder 3/8] COPY pom.xml .
+#32 CACHED
+
+#33 [config-server builder 7/8] COPY src ./src
+#33 CACHED
+
+#34 [config-server builder 5/8] COPY mvnw mvnw
+#34 CACHED
+
+#35 [config-server stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#35 CACHED
+
+#36 [auth-service builder 4/8] COPY .mvn .mvn
+#36 CACHED
+
+#37 [auth-service builder 3/8] COPY pom.xml .
+#37 CACHED
+
+#38 [auth-service builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#38 CACHED
+
+#39 [auth-service stage-1 2/3] WORKDIR /app
+#39 CACHED
+
+#40 [auth-service builder 5/8] COPY mvnw mvnw
+#40 CACHED
+
+#41 [auth-service builder 7/8] COPY src ./src
+#41 CACHED
+
+#42 [auth-service builder 2/8] WORKDIR /workspace
+#42 CACHED
+
+#43 [auth-service builder 8/8] RUN mvn -B -DskipTests package
+#43 CACHED
+
+#44 [auth-service stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#44 CACHED
+
+#45 [notification-service builder 7/8] COPY src ./src
+#45 CACHED
+
+#46 [notification-service builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#46 CACHED
+
+#47 [notification-service builder 8/8] RUN mvn -B -DskipTests package
+#47 CACHED
+
+#48 [notification-service builder 5/8] COPY mvnw mvnw
+#48 CACHED
+
+#49 [notification-service builder 3/8] COPY pom.xml .
+#49 CACHED
+
+#50 [notification-service builder 4/8] COPY .mvn .mvn
+#50 CACHED
+
+#51 [api-gateway builder 3/8] COPY pom.xml .
+#51 CACHED
+
+#52 [api-gateway builder 5/8] COPY mvnw mvnw
+#52 CACHED
+
+#53 [api-gateway builder 4/8] COPY .mvn .mvn
+#53 CACHED
+
+#54 [api-gateway builder 8/8] RUN mvn -B -DskipTests package
+#54 CACHED
+
+#55 [api-gateway builder 7/8] COPY src ./src
+#55 CACHED
+
+#56 [api-gateway builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#56 CACHED
+
+#57 [notification-service stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#57 CACHED
+
+#58 [api-gateway stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#58 CACHED
+
+#59 [booking-service builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#59 CACHED
+
+#60 [booking-service builder 7/8] COPY src ./src
+#60 CACHED
+
+#61 [booking-service builder 4/8] COPY .mvn .mvn
+#61 CACHED
+
+#62 [booking-service builder 8/8] RUN mvn -B -DskipTests package
+#62 CACHED
+
+#63 [booking-service builder 5/8] COPY mvnw mvnw
+#63 CACHED
+
+#64 [booking-service builder 3/8] COPY pom.xml .
+#64 CACHED
+
+#65 [flight-service builder 5/8] COPY mvnw mvnw
+#65 CACHED
+
+#66 [flight-service builder 4/8] COPY .mvn .mvn
+#66 CACHED
+
+#67 [flight-service builder 3/8] COPY pom.xml .
+#67 CACHED
+
+#68 [flight-service builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#68 CACHED
+
+#69 [flight-service builder 8/8] RUN mvn -B -DskipTests package
+#69 CACHED
+
+#70 [flight-service builder 7/8] COPY src ./src
+#70 CACHED
+
+#71 [service-registry builder 3/8] COPY pom.xml .
+#71 CACHED
+
+#42 [flight-service builder 2/8] WORKDIR /workspace
+#42 CACHED
+
+#72 [service-registry builder 7/8] COPY src ./src
+#72 CACHED
+
+#73 [service-registry builder 5/8] COPY mvnw mvnw
+#73 CACHED
+
+#74 [service-registry builder 4/8] COPY .mvn .mvn
+#74 CACHED
+
+#75 [service-registry builder 8/8] RUN mvn -B -DskipTests package
+#75 CACHED
+
+#76 [service-registry builder 6/8] RUN mvn -q -N io.takari:maven:wrapper || true
+#76 CACHED
+
+#39 [flight-service stage-1 2/3] WORKDIR /app
+#39 CACHED
+
+#77 [service-registry stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#77 CACHED
+
+#78 [flight-service stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#78 CACHED
+
+#79 [booking-service stage-1 3/3] COPY --from=builder /workspace/target/*.jar app.jar
+#79 CACHED
+
+#80 [auth-service] exporting to image
+#80 exporting layers done
+#80 exporting manifest sha256:afd218b128bc513ad50d6b381c6198b1484c800d8fdb15544d1fbdb10339702b done
+#80 exporting config sha256:b39325b22e20c2e33a7df428a67709b7a304d11361495e715bc0ccc02a0edff5 done
+#80 exporting attestation manifest sha256:decac1fdb7fd0e404ab849039da1578182c0bddf320ffe6d0f98f371b826f4ba 0.0s done
+#80 exporting manifest list sha256:5ab516bb179380177a46e3001f9b0376111ff0de9516c314bf30da3f3f4efc38 0.0s done
+#80 naming to docker.io/library/flightbookingmicro-auth-service:latest 0.0s done
+#80 unpacking to docker.io/library/flightbookingmicro-auth-service:latest done
+#80 DONE 0.1s
+
+#81 [config-server] exporting to image
+#81 exporting layers done
+#81 exporting manifest sha256:b209ebe1790e3cc674056d64a12a902121549211601a44fe74185439a3613017 done
+#81 exporting config sha256:762c9777cfcc4fc03621ad019562c1f3888f0bfca2fe8c89c985632e2caba46a done
+#81 exporting attestation manifest sha256:0238ce2971b08aa80c0f78f2ea003aea021c45dc517a8a2ed751fea65d1ee668 0.0s done
+#81 exporting manifest list sha256:1a1733f3f74f61d7cdd0c29f273dc48e84fa72fa481e5a4be13401abfcc06838 0.0s done
+#81 naming to docker.io/library/flightbookingmicro-config-server:latest 0.0s done
+#81 unpacking to docker.io/library/flightbookingmicro-config-server:latest done
+#81 DONE 0.1s
+
+#82 [api-gateway] exporting to image
+#82 exporting layers done
+#82 exporting manifest sha256:f89e93d124d72985edec5fce5941ec587eece20a5aa064b1a4d4ee1cbd1f9712 done
+#82 exporting config sha256:486dcb5d5bf1124501bbd970a759531f8ee606c1f38b5422234229f9bca46da3 done
+#82 exporting attestation manifest sha256:afd307f609442475d8f29f3351eab97d28e9e932eb9e93441f707041bac84974 0.0s done
+#82 exporting manifest list sha256:81e4e1c8fc40979178a4bf084a9d5d7bc4e8ffc907323f4d6e7e17015e814fb7 0.0s done
+#82 naming to docker.io/library/flightbookingmicro-api-gateway:latest done
+#82 unpacking to docker.io/library/flightbookingmicro-api-gateway:latest done
+#82 DONE 0.1s
+
+#83 [notification-service] exporting to image
+#83 exporting layers done
+#83 exporting manifest sha256:ed685f4242d3ed74ebd916238544f4328935cdad2becb2bef5af76929304d9eb done
+#83 exporting config sha256:3f8c63fc0a88fb5c032174a54bdcece4fc38c47e81cb0569ebfc693a768055c0 done
+#83 exporting attestation manifest sha256:1d2ae6d9ba2b5a8411643cd7310c648192ac63f45dab71aeb03cbde60e3bc736 0.0s done
+#83 exporting manifest list sha256:f879cc0606e22fcb734560798ce30a387fc06de267db43fa85a8051e4cb01118 0.0s done
+#83 naming to docker.io/library/flightbookingmicro-notification-service:latest done
+#83 unpacking to docker.io/library/flightbookingmicro-notification-service:latest done
+#83 DONE 0.1s
+
+#84 [service-registry] exporting to image
+#84 exporting layers done
+#84 exporting manifest sha256:876a88e481f4478c27fc31d8619221745d4571deaa85cda2970a1581f122b671 done
+#84 exporting config sha256:69e312bfa73a9dd2a7e31cf43593b52b525ac29742ebbee225f8b638895f3061 done
+#84 exporting attestation manifest sha256:ed9dc3a6cb039c0d054ed08d77e6f94ec88d7380bce3fab231a09fe5c0c762ad 0.0s done
+#84 exporting manifest list sha256:bb0fcc8187484a23c5b861b0faa82d28c69e8d77c408b3438f6060ef5c5dd80e 0.0s done
+#84 naming to docker.io/library/flightbookingmicro-service-registry:latest done
+#84 unpacking to docker.io/library/flightbookingmicro-service-registry:latest done
+#84 DONE 0.1s
+
+#85 [flight-service] exporting to image
+#85 exporting layers done
+#85 exporting manifest sha256:0995783dc5c6e94ff5621eeaf539219472aa8225f3f9757ee51dafdeebc25527 done
+#85 exporting config sha256:b30de4ba19f52fbe725a3184f9ba47168c12b4be80daf547109d8c173c93b07b done
+#85 exporting attestation manifest sha256:78eaf0ff76e3c67e08d1accab3f126da38c7592b0096ad5127c8d1daeba6c929 0.0s done
+#85 exporting manifest list sha256:e0320328864a49cacc01b4d49439a376bf8614136f8b2c5132fc904242452d5c 0.0s done
+#85 naming to docker.io/library/flightbookingmicro-flight-service:latest done
+#85 unpacking to docker.io/library/flightbookingmicro-flight-service:latest done
+#85 DONE 0.1s
+
+#86 [booking-service] exporting to image
+#86 exporting layers done
+#86 exporting manifest sha256:e1cc89076895857514442f70f76719b397e9b8a5730debdf4be7d8df80805a2b done
+#86 exporting config sha256:41ff40d6ba6760ae623adebf67063bfd5980530150bda8d3024f624123bf1d76 done
+#86 exporting attestation manifest sha256:5182433fe0935f6a02377a578f3c47b05babea1488a9aa69310f30af6ace8f67 0.0s done
+#86 exporting manifest list sha256:753110e4327181bfc44dc79c0da16501364ac0697e1ca21ce9f3d14ec8b22a1f 0.0s done
+#86 naming to docker.io/library/flightbookingmicro-booking-service:latest done
+#86 unpacking to docker.io/library/flightbookingmicro-booking-service:latest done
+#86 DONE 0.1s
+
+#87 [auth-service] resolving provenance for metadata file
+#87 ...
+
+#88 [config-server] resolving provenance for metadata file
+#88 DONE 0.0s
+
+#89 [service-registry] resolving provenance for metadata file
+#89 DONE 0.1s
+
+#90 [notification-service] resolving provenance for metadata file
+#90 DONE 0.0s
+
+#87 [auth-service] resolving provenance for metadata file
+#87 DONE 0.1s
+
+#91 [booking-service] resolving provenance for metadata file
+#91 DONE 0.1s
+
+#92 [api-gateway] resolving provenance for metadata file
+#92 DONE 0.0s
+
+#93 [flight-service] resolving provenance for metadata file
+#93 DONE 0.1s
+ flightbookingmicro-auth-service  Built
+ flightbookingmicro-config-server  Built
+ flightbookingmicro-notification-service  Built
+ flightbookingmicro-api-gateway  Built
+ flightbookingmicro-booking-service  Built
+ flightbookingmicro-flight-service  Built
+ flightbookingmicro-service-registry  Built
+ Container flight_rabbitmq  Running
+ Container service-registry  Recreate
+ Container notification-service  Recreate
+ Container service-registry  Recreated
+ Container notification-service  Recreated
+ Container auth-service  Recreate
+ Container config-server  Recreate
+ Container auth-service  Recreated
+ Container config-server  Recreated
+ Container booking-service  Recreate
+ Container api-gateway  Recreate
+ Container flight-service  Recreate
+ Container flight-service  Recreated
+ Container api-gateway  Recreated
+ Container booking-service  Recreated
+Attaching to api-gateway, auth-service, booking-service, config-server, flight-service, flight_mysql, flight_rabbitmq, notification-service, service-registry
+Error response from daemon: ports are not available: exposing port TCP 0.0.0.0:3306 -> 127.0.0.1:0: listen tcp 0.0.0.0:3306: bind: address already in use

@@ -18,7 +18,6 @@ public class EmailListener {
         this.objectMapper = objectMapper;
     }
 
-    // Accept JSON string payload (safer / easier than converting headers/types)
     @RabbitListener(queues = "email.queue")
     public void receive(String jsonPayload) {
         try {
@@ -33,7 +32,6 @@ public class EmailListener {
 
             System.out.println("Email sent to: " + message.getTo());
         } catch (Exception ex) {
-            // log the exception and rethrow (so Rabbit will handle DLQ/retries according to container config)
             ex.printStackTrace();
             throw new RuntimeException("Failed to process email message", ex);
         }

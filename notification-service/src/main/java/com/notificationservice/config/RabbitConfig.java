@@ -34,10 +34,6 @@ public class RabbitConfig {
         return BindingBuilder.bind(emailQueue).to(bookingExchange).with(ROUTING_CANCELLED);
     }
 
-    /**
-     * Make sure RabbitAdmin exists and is auto-started so the queue/exchange/bindings are declared
-     * on the broker before listeners attempt passive declarations.
-     */
     @Bean
     public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
         RabbitAdmin admin = new RabbitAdmin(connectionFactory);

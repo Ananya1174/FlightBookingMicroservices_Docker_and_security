@@ -10,7 +10,7 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.server.ServerHttpResponse;
+import org.springframework.http.server.reactive.ServerHttpResponse;
 import reactor.core.publisher.Mono;
 
 import java.util.Map;
@@ -23,8 +23,8 @@ public class TokenValidationFilter implements GlobalFilter, Ordered {
     @Value("${auth.service.url:http://localhost:8080}")
     private String authServiceUrl;
 
-    public TokenValidationFilter(WebClient webClient) {
-        this.webClient = webClient;
+    public TokenValidationFilter(WebClient.Builder webClientBuilder) {
+        this.webClient = webClientBuilder.baseUrl("http://auth-service").build();
     }
 
     @Override

@@ -1,0 +1,171 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: flight_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "Ananya2004!"
+      # Optionally create a default DB, but we also use init scripts to create multiple DBs
+      MYSQL_DATABASE: "authdb"
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: flight_rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672" # management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - backend
+
+  service-registry:
+    build:
+      context: ./service-registry
+      dockerfile: Dockerfile
+    container_name: service-registry
+    environment:
+      - SPRING_PROFILES_ACTIVE=default
+      - SERVER_PORT=8761
+    ports:
+      - "8761:8761"
+    depends_on:
+      - mysql
+    networks:
+      - backend
+
+  config-server:
+    build:
+      context: ./config-server
+      dockerfile: Dockerfile
+    container_name: config-server
+    environment:
+      - SERVER_PORT=8888
+      # If you prefer to override the git URI via env:
+      # - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=https://github.com/Ananya1174/flight-config-server
+    ports:
+      - "8888:8888"
+    depends_on:
+      - service-registry
+    networks:
+      - backend
+
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: notification-service
+    environment:
+      - SERVER_PORT=8090
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_MAIL_HOST=smtp.gmail.com
+      # WARNING: DO NOT store real passwords here in production. Use secrets.
+      - SPRING_MAIL_USERNAME=charliektest11@gmail.com
+      - SPRING_MAIL_PASSWORD=yses ebhf nilw wruc
+    ports:
+      - "8090:8090"
+    depends_on:
+      - rabbitmq
+    networks:
+      - backend
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    environment:
+      - SERVER_PORT=8085
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/authdb?useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+    ports:
+      - "8085:8085"
+    depends_on:
+      - mysql
+      - service-registry
+    networks:
+      - backend
+
+  flight-service:
+    build:
+      context: ./flight-service
+      dockerfile: Dockerfile
+    container_name: flight-service
+    environment:
+      - SERVER_PORT=8081
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/flightdb_micro?useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mysql
+      - service-registry
+      - config-server
+    networks:
+      - backend
+
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: booking-service
+    environment:
+      - SERVER_PORT=8082
+      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/bookingdb_micro?useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
+      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_PORT=5672
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mysql
+      - rabbitmq
+      - service-registry
+      - config-server
+    networks:
+      - backend
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    environment:
+      - SERVER_PORT=8087
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SPRING_CLOUD_GATEWAY_DISCOVERY_LOCATOR_ENABLED=true
+    ports:
+      - "8087:8087"
+    depends_on:
+      - service-registry
+      - config-server
+    networks:
+      - backend
+
+volumes:
+  mysql-data:
+
+networks:
+  backend:
+    driver: bridge

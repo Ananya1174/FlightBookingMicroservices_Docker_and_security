@@ -1,86 +1,91 @@
 package com.authservice.controller;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.http.ResponseEntity;
-import org.springframework.beans.factory.annotation.Autowired;
-import com.authservice.dto.*;
-import com.authservice.repo.UserRepository;
+
+import com.authservice.model.ERole;
+import com.authservice.model.Role;
 import com.authservice.model.User;
-import com.authservice.service.AuthService;
-import com.authservice.service.TokenBlacklistService;
-import com.authservice.jwt.JwtUtil;
-import jakarta.validation.Valid;
-import io.jsonwebtoken.Jws;
-import io.jsonwebtoken.Claims;
-import java.time.Instant;
-import java.util.Map;
+import com.authservice.payload.request.LoginRequest;
+import com.authservice.payload.request.SignupRequest;
+import com.authservice.payload.response.JwtResponse;
+import com.authservice.repository.RoleRepository;
+import com.authservice.repository.UserRepository;
+import com.authservice.security.JwtUtils;
+import com.authservice.security.UserDetailsImpl;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.*;
 
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
+    private final AuthenticationManager authManager;
     private final UserRepository userRepo;
-    private final AuthService authService;
-    private final JwtUtil jwtUtil;
-    private final TokenBlacklistService blacklistService;
-
-    @Autowired
-    public AuthController(UserRepository userRepo, AuthService authService, JwtUtil jwtUtil, TokenBlacklistService blacklistService) {
-        this.userRepo = userRepo;
-        this.authService = authService;
-        this.jwtUtil = jwtUtil;
-        this.blacklistService = blacklistService;
-    }
+    private final RoleRepository roleRepo;
+    private final PasswordEncoder encoder;
+    private final JwtUtils jwtUtils;
 
     @PostMapping("/signup")
-    public ResponseEntity<?> signup(@Valid @RequestBody SignupRequest req) {
-        if (userRepo.existsByEmail(req.getEmail())) return ResponseEntity.badRequest().body(Map.of("error","email exists"));
-        String role = (req.getRole() == null || req.getRole().isBlank()) ? "ROLE_USER" : req.getRole();
-        User u = authService.createUser(req.getEmail(), req.getPassword(), role);
-        return ResponseEntity.status(201).body(Map.of("message", "created", "email", u.getEmail()));
+    public String register(@RequestBody SignupRequest req) {
+
+        if (userRepo.existsByUsername(req.getUsername()))
+            return "Username already exists";
+
+        if (userRepo.existsByEmail(req.getEmail()))
+            return "Email already exists";
+
+        User user = new User();
+        user.setUsername(req.getUsername());
+        user.setEmail(req.getEmail());
+        user.setPassword(encoder.encode(req.getPassword()));
+
+        Set<Role> roles = new HashSet<>();
+
+        if (req.getRole() == null) {
+            Role userRole = roleRepo.findByName(ERole.ROLE_USER)
+                    .orElseThrow();
+            roles.add(userRole);
+        } else {
+            req.getRole().forEach(r -> {
+                if (r.equalsIgnoreCase("admin")) {
+                    roles.add(roleRepo.findByName(ERole.ROLE_ADMIN).orElseThrow());
+                } else {
+                    roles.add(roleRepo.findByName(ERole.ROLE_USER).orElseThrow());
+                }
+            });
+        }
+
+        user.setRoles(roles);
+        userRepo.save(user);
+
+        return "User registered successfully!";
     }
 
     @PostMapping("/signin")
-    public ResponseEntity<?> signin(@Valid @RequestBody com.authservice.dto.AuthRequest req) {
-        try {
-            String token = authService.loginAndGetToken(req.getEmail(), req.getPassword());
-            return ResponseEntity.ok(new AuthResponse(token, authService.getExpirySeconds(), userRepo.findByEmail(req.getEmail()).get().getRole()));
-        } catch (RuntimeException ex) {
-            return ResponseEntity.status(401).body(Map.of("error","invalid credentials"));
-        }
-    }
+    public JwtResponse login(@RequestBody LoginRequest req) {
 
-    @PostMapping("/signout")
-    public ResponseEntity<?> signout(@RequestHeader(name="Authorization", required=false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) return ResponseEntity.badRequest().body(Map.of("error","no token"));
-        String token = authHeader.substring(7);
-        try {
-            Jws<Claims> parsed = jwtUtil.parseToken(token);
-            String jti = parsed.getBody().getId();
-            Instant exp = parsed.getBody().getExpiration().toInstant();
-            blacklistService.blacklist(jti, exp);
-            return ResponseEntity.ok(Map.of("message","signed out"));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error","invalid token"));
-        }
-    }
+    	var auth = authManager.authenticate(
+    	        new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
+    	);
 
-    @GetMapping("/validate")
-    public ResponseEntity<ValidateResponse> validate(@RequestHeader(name="Authorization", required=false) String authHeader) {
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.ok(new ValidateResponse(false, null, null, null));
-        }
-        String token = authHeader.substring(7);
-        try {
-            Jws<Claims> parsed = jwtUtil.parseToken(token);
-            String jti = parsed.getBody().getId();
-            if (blacklistService.isBlacklisted(jti)) {
-                return ResponseEntity.ok(new ValidateResponse(false, null, null, jti));
-            }
-            String email = parsed.getBody().getSubject();
-            String role = parsed.getBody().get("roles", String.class);
-            return ResponseEntity.ok(new ValidateResponse(true, email, role, jti));
-        } catch (Exception e) {
-            return ResponseEntity.ok(new ValidateResponse(false, null, null, null));
-        }
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+
+        String token = jwtUtils.generateJwtToken(user);
+
+        List<String> roles = user.getAuthorities()
+                .stream().map(a -> a.getAuthority()).toList();
+
+        return new JwtResponse(
+                token,
+                "Bearer",
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                roles
+        );
     }
 }

@@ -2,10 +2,8 @@ package com.bookingservice.service;
 
 import com.bookingservice.client.FlightClientService;
 import com.bookingservice.client.dto.FlightDto;
-import com.bookingservice.dto.BookingRequest;
-import com.bookingservice.dto.BookingResponseDto;
-import com.bookingservice.dto.PersonDto;
-import com.bookingservice.dto.SeatDto;
+import com.bookingservice.client.dto.SeatBookingRequest;
+import com.bookingservice.dto.*;
 import com.bookingservice.message.EmailMessage;
 import com.bookingservice.message.EmailPublisher;
 import com.bookingservice.model.Booking;
@@ -15,337 +13,307 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class BookingService {
 
-	private static final Logger log = LoggerFactory.getLogger(BookingService.class);
+    private static final Logger log = LoggerFactory.getLogger(BookingService.class);
 
-	private final BookingRepository bookingRepository;
-	private final FlightClientService flightClientService;
-	private final EmailPublisher emailPublisher;
+    private final BookingRepository bookingRepository;
+    private final FlightClientService flightClientService;
+    private final EmailPublisher emailPublisher;
 
-	public BookingService(BookingRepository bookingRepository, FlightClientService flightClientService,
-			EmailPublisher emailPublisher) {
-		this.bookingRepository = bookingRepository;
-		this.flightClientService = flightClientService;
-		this.emailPublisher = emailPublisher;
-	}
+    public BookingService(
+            BookingRepository bookingRepository,
+            FlightClientService flightClientService,
+            EmailPublisher emailPublisher) {
 
-	@Transactional
-	public BookingResponseDto createBooking(BookingRequest request, String headerEmail, Long flightId) {
-		log.debug("createBooking called: flightId={}, headerEmail={}, numSeats={}", flightId, headerEmail,
-				request == null ? null : request.getNumSeats());
+        this.bookingRepository = bookingRepository;
+        this.flightClientService = flightClientService;
+        this.emailPublisher = emailPublisher;
+    }
 
-		validateAndNormalizeRequest(request, headerEmail);
+    // =====================================================
+    // CREATE BOOKING
+    // =====================================================
+    @Transactional
+    public BookingResponseDto createBooking(
+            BookingRequest request, String headerEmail, Long flightId) {
 
-		FlightDto flight = flightClientService.getFlightById(flightId);
+        validateAndNormalizeRequest(request, headerEmail);
 
-		long availableSeats = ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
+        FlightDto flight = flightClientService.getFlightById(flightId);
 
-		validateRequestedSeatNumbers(flight, request);
+        ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
 
-		List<String> requestedSeatsUpper = request.getPassengers().stream().map(PersonDto::getSeatNumber)
-				.filter(s -> s != null && !s.isBlank()).map(String::trim).map(String::toUpperCase).toList();
+        List<String> requestedSeatNumbers = request.getPassengers().stream()
+                .map(PersonDto::getSeatNumber)
+                .map(String::trim)
+                .map(String::toUpperCase)
+                .toList();
 
-		checkRequestedSeatsAgainstExistingBookings(flightId, requestedSeatsUpper);
+        checkRequestedSeatsAgainstExistingBookings(flightId, requestedSeatNumbers);
 
-		double totalPrice = calculateTotalPrice(flight.getPrice(), request.getNumSeats());
+        double totalPrice = flight.getPrice() * request.getNumSeats();
 
-		Booking booking = buildBookingEntity(request, totalPrice, flightId);
-		Booking saved = persistBookingOrThrow(booking);
+        Booking booking =
+                buildBookingEntity(request, totalPrice, flightId, headerEmail);
 
-		log.info("Booking saved: pnr={}, flightId={}, user={}", saved.getPnr(), saved.getFlightId(),
-				saved.getUserEmail());
+        Booking saved = bookingRepository.save(booking);
 
-		String to = saved.getUserEmail();
-		String subject = "Booking Confirmed: PNR " + saved.getPnr();
-		StringBuilder body = new StringBuilder();
-		body.append("Hi,\n\n");
-		body.append("Your booking is confirmed.\n\n");
-		body.append("PNR: ").append(saved.getPnr()).append("\n");
-		body.append("Flight ID: ").append(saved.getFlightId()).append("\n");
-		body.append("Seats: ").append(saved.getNumSeats()).append("\n");
-		body.append("Total: ").append(saved.getTotalPrice()).append("\n\n");
-		body.append("Passengers:\n");
-		for (Passenger p : Optional.ofNullable(saved.getPassengers()).orElse(Collections.emptyList())) {
-			body.append(" - ").append(p.getPassengerName()).append(" / Seat: ")
-					.append(p.getSeatNumber() == null ? "-" : p.getSeatNumber()).append("\n");
-		}
-		body.append("\nThanks,\nBooking Team");
+        // 🔐 Book seats AFTER DB commit
+        List<SeatBookingRequest> seatRequests =
+                saved.getPassengers().stream()
+                        .map(p -> {
+                            SeatBookingRequest s = new SeatBookingRequest();
+                            s.setSeatNumber(p.getSeatNumber());
+                            s.setPassengerName(p.getPassengerName());
+                            return s;
+                        })
+                        .toList();
 
-		EmailMessage emailMsg = new EmailMessage(to, subject, body.toString());
+        registerAfterCommit(() ->
+                flightClientService.bookSeats(saved.getFlightId(), seatRequests)
+        );
 
-		registerAfterCommit(() -> {
-			try {
-				emailPublisher.publishBookingCreated(emailMsg);
-				log.info("Published booking-created email for PNR {}", saved.getPnr());
-			} catch (Exception ex) {
-				log.error("Failed to publish booking-created message for PNR {}: {}", saved.getPnr(), ex.toString(),
-						ex);
-			}
-		});
+        publishBookingEmail(saved);
+        return convertToDto(saved);
+    }
 
-		return convertToDto(saved);
-	}
+    // =====================================================
+    // CANCEL BOOKING (24-HOUR RULE)
+    // =====================================================
+    @Transactional
+    public BookingResponseDto cancelBooking(String pnr, String headerEmail) {
 
-	private void validateAndNormalizeRequest(BookingRequest request, String headerEmail) {
-		if (request == null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
-		}
-		if (headerEmail == null || headerEmail.isBlank()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "X-User-Email header is required");
-		}
+        Booking booking = bookingRepository.findByPnr(pnr)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "PNR not found"));
 
-		if (request.getUserEmail() == null || request.getUserEmail().isBlank()) {
-			request.setUserEmail(headerEmail);
-		} else if (!headerEmail.equalsIgnoreCase(request.getUserEmail())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Header user email must match request userEmail");
-		}
+        if (!booking.getUserEmail().equalsIgnoreCase(headerEmail)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your booking");
+        }
 
-		if (request.getNumSeats() == null || request.getNumSeats() <= 0) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "numSeats must be provided and > 0");
-		}
+        // ✅ 24-hour cancellation validation
+        long hoursSinceBooking =
+                Duration.between(booking.getCreatedAt(), Instant.now()).toHours();
 
-		if (request.getPassengers() == null || request.getPassengers().isEmpty()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-					"passengers list is required and cannot be empty");
-		}
-		if (request.getPassengers().size() != request.getNumSeats()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "number of passengers must match numSeats");
-		}
+        if (hoursSinceBooking > 24) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Cancellation allowed only within 24 hours of booking"
+            );
+        }
 
-		for (int i = 0; i < request.getPassengers().size(); i++) {
-			PersonDto p = request.getPassengers().get(i);
-			if (p.getName() == null || p.getName().isBlank()) {
-				throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						"Passenger name is required for passenger index " + i);
-			}
-			if (p.getAge() == null || p.getAge() <= 0) {
-				throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-						"Passenger age must be > 0 for passenger " + p.getName());
-			}
-		}
-	}
+        int updated = bookingRepository.cancelIfActive(pnr, Instant.now());
+        if (updated == 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Booking already cancelled"
+            );
+        }
 
-	private long ensureSeatAvailabilityOrThrow(FlightDto flight, Integer requestedSeats) {
-		long availableSeats = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList()).stream()
-				.filter(s -> s.getStatus() != null && "AVAILABLE".equalsIgnoreCase(s.getStatus())).count();
+        Booking saved = bookingRepository.findByPnr(pnr)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.INTERNAL_SERVER_ERROR,
+                                "Booking missing"
+                        ));
 
-		if (availableSeats < requestedSeats) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT,
-					"Not enough seats available: requested=" + requestedSeats + ", available=" + availableSeats);
-		}
-		return availableSeats;
-	}
+        List<String> seatNumbers = saved.getPassengers().stream()
+                .map(Passenger::getSeatNumber)
+                .map(String::toUpperCase)
+                .toList();
 
-	private void validateRequestedSeatNumbers(FlightDto flight, BookingRequest request) {
-		List<PersonDto> passengers = request.getPassengers();
-		List<String> requestedSeats = passengers.stream().map(PersonDto::getSeatNumber)
-				.filter(s -> s != null && !s.isBlank()).map(String::toUpperCase).toList();
+        // 🔓 Release seats AFTER commit
+        registerAfterCommit(() ->
+                flightClientService.releaseSeats(saved.getFlightId(), seatNumbers)
+        );
 
-		if (requestedSeats.isEmpty()) {
-			return;
-		}
+        publishCancelEmail(saved);
+        return convertToDto(saved);
+    }
 
-		Set<String> duplicates = requestedSeats.stream().collect(Collectors.groupingBy(s -> s, Collectors.counting()))
-				.entrySet().stream().filter(e -> e.getValue() > 1).map(Map.Entry::getKey).collect(Collectors.toSet());
+    // =====================================================
+    // GET BOOKING BY PNR
+    // =====================================================
+    @Transactional(readOnly = true)
+    public BookingResponseDto getByPnr(String pnr) {
 
-		if (!duplicates.isEmpty()) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-					"Duplicate seat selection in request: " + duplicates);
-		}
+        Booking booking = bookingRepository.findByPnr(pnr)
+                .orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.NOT_FOUND, "PNR not found"));
 
-		Map<String, SeatDto> flightSeatMap = Optional.ofNullable(flight.getSeats()).orElse(Collections.emptyList())
-				.stream().filter(s -> s.getSeatNumber() != null)
-				.collect(Collectors.toMap(s -> s.getSeatNumber().toUpperCase(), s -> s, (a, b) -> a));
+        return convertToDto(booking);
+    }
 
-		List<String> notFound = new ArrayList<>();
-		List<String> notAvailable = new ArrayList<>();
+    // =====================================================
+    // BOOKING HISTORY
+    // =====================================================
+    @Transactional(readOnly = true)
+    public List<BookingResponseDto> getHistoryByEmail(String email) {
 
-		for (String seat : requestedSeats) {
-			SeatDto seatDto = flightSeatMap.get(seat);
-			if (seatDto == null) {
-				notFound.add(seat);
-			} else if (!"AVAILABLE".equalsIgnoreCase(Optional.ofNullable(seatDto.getStatus()).orElse(""))) {
-				notAvailable.add(seat);
-			}
-		}
+        return bookingRepository
+                .findByUserEmailOrderByCreatedAtDesc(email)
+                .stream()
+                .map(this::convertToDto)
+                .toList();
+    }
 
-		if (!notFound.isEmpty() || !notAvailable.isEmpty()) {
-			StringBuilder sb = new StringBuilder();
-			if (!notFound.isEmpty()) {
-				sb.append("Requested seats not found: ").append(notFound).append(". ");
-			}
-			if (!notAvailable.isEmpty()) {
-				sb.append("Requested seats not available: ").append(notAvailable).append(". ");
-			}
-			throw new ResponseStatusException(HttpStatus.CONFLICT, sb.toString().trim());
-		}
-	}
+    // =====================================================
+    // HELPERS
+    // =====================================================
 
-	private double calculateTotalPrice(Double pricePerSeat, Integer numSeats) {
-		double price = (pricePerSeat == null) ? 0.0 : pricePerSeat;
-		return price * numSeats;
-	}
+    private void validateAndNormalizeRequest(BookingRequest request, String email) {
 
-	private Booking buildBookingEntity(BookingRequest request, double totalPrice, Long flightId) {
-		Booking booking = new Booking();
-		booking.setPnr(generatePnr());
-		booking.setFlightId(flightId);
-		booking.setUserEmail(request.getUserEmail());
-		booking.setNumSeats(request.getNumSeats());
-		booking.setTotalPrice(totalPrice);
-		booking.setStatus("ACTIVE");
-		booking.setCreatedAt(Instant.now());
+        if (request == null)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body required");
 
-		// Normalize seat numbers when persisting (trim + upper) so DB stores canonical
-		// values
-		List<Passenger> passengers = request.getPassengers().stream().map(pdto -> {
-			Passenger p = new Passenger();
-			p.setPassengerName(pdto.getName());
-			p.setGender(pdto.getGender());
-			p.setAge(pdto.getAge());
-			String seat = pdto.getSeatNumber();
-			p.setSeatNumber(seat == null ? null : seat.trim().toUpperCase());
-			p.setMealPreference(pdto.getMealPreference());
-			p.setBooking(booking);
-			return p;
-		}).toList();
+        if (email == null || email.isBlank())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User email required");
 
-		booking.setPassengers(passengers);
-		return booking;
-	}
+        request.setUserEmail(email);
 
-	private Booking persistBookingOrThrow(Booking booking) {
-		try {
-			return bookingRepository.save(booking);
-		} catch (Exception ex) {
-			log.error("Failed to save booking to DB: {}", ex.toString(), ex);
-			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to save booking");
-		}
-	}
+        if (request.getNumSeats() == null || request.getNumSeats() <= 0)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid seat count");
 
-	@Transactional(readOnly = true)
-	public BookingResponseDto getByPnr(String pnr) {
-		Booking booking = bookingRepository.findByPnr(pnr)
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "PNR not found"));
-		return convertToDto(booking);
-	}
+        if (request.getPassengers() == null ||
+                request.getPassengers().size() != request.getNumSeats()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Passenger count must match numSeats"
+            );
+        }
+    }
 
-	@Transactional(readOnly = true)
-	public List<BookingResponseDto> getHistoryByEmail(String email) {
-		List<Booking> list = bookingRepository.findByUserEmailOrderByCreatedAtDesc(email);
-		return list.stream().map(this::convertToDto).toList();
-	}
+    private void ensureSeatAvailabilityOrThrow(FlightDto flight, int requested) {
 
-	@Transactional
-	public BookingResponseDto cancelBooking(String pnr, String headerEmail) {
-		Booking existing = bookingRepository.findByPnr(pnr)
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "PNR not found"));
+        long available = flight.getSeats().stream()
+                .filter(s -> "AVAILABLE".equalsIgnoreCase(s.getStatus()))
+                .count();
 
-		if (!existing.getUserEmail().equalsIgnoreCase(headerEmail)) {
-			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the booking owner can cancel this booking");
-		}
+        if (available < requested) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Only " + available + " seats available"
+            );
+        }
+    }
 
-		int updated = bookingRepository.cancelIfActive(pnr, Instant.now());
-		if (updated == 0) {
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "Booking already cancelled");
-		}
+    private void checkRequestedSeatsAgainstExistingBookings(
+            Long flightId, List<String> seats) {
 
-		Booking saved = bookingRepository.findByPnr(pnr)
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-						"Booking disappeared after cancel"));
+        if (seats.isEmpty()) return;
 
-		log.info("Booking cancelled: pnr={}, flightId={}, user={}", saved.getPnr(), saved.getFlightId(),
-				saved.getUserEmail());
+        int conflicts =
+                bookingRepository.countConflictingSeats(flightId, seats);
 
-		String to = saved.getUserEmail();
-		String subject = "Booking Cancelled: PNR " + saved.getPnr();
-		String body = "Hi,\n\nYour booking with PNR " + saved.getPnr()
-				+ " has been cancelled.\n\nThanks,\nBooking Team";
-		EmailMessage cancelMsg = new EmailMessage(to, subject, body);
+        if (conflicts > 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "One or more seats already booked"
+            );
+        }
+    }
 
-		registerAfterCommit(() -> {
-			try {
-				emailPublisher.publishBookingCancelled(cancelMsg);
-				log.info("Published booking-cancelled email for PNR {}", saved.getPnr());
-			} catch (Exception ex) {
-				log.error("Failed to publish booking-cancelled message for PNR {}: {}", saved.getPnr(), ex.toString(),
-						ex);
-			}
-		});
+    private Booking buildBookingEntity(
+            BookingRequest request, double price, Long flightId, String userEmail) {
 
-		return convertToDto(saved);
-	}
+        Booking booking = new Booking();
+        booking.setPnr(UUID.randomUUID().toString().replace("-", "")
+                .substring(0, 8).toUpperCase());
+        booking.setFlightId(flightId);
+        booking.setUserEmail(userEmail);
+        booking.setNumSeats(request.getNumSeats());
+        booking.setTotalPrice(price);
+        booking.setStatus("ACTIVE");
+        booking.setCreatedAt(Instant.now());
 
-	private void checkRequestedSeatsAgainstExistingBookings(Long flightId, List<String> requestedSeatsUpper) {
-		if (requestedSeatsUpper == null || requestedSeatsUpper.isEmpty())
-			return;
+        List<Passenger> passengers =
+                request.getPassengers().stream()
+                        .map(p -> {
+                            Passenger ps = new Passenger();
+                            ps.setPassengerName(p.getName());
+                            ps.setAge(p.getAge());
+                            ps.setGender(p.getGender());
+                            ps.setMealPreference(p.getMealPreference());
+                            ps.setSeatNumber(p.getSeatNumber().toUpperCase());
+                            ps.setBooking(booking);
+                            return ps;
+                        })
+                        .toList();
 
-		List<String> seatParam = requestedSeatsUpper.stream().map(s -> s == null ? "" : s.trim().toUpperCase())
-				.filter(s -> !s.isEmpty()).toList();
+        booking.setPassengers(passengers);
+        return booking;
+    }
 
-		if (seatParam.isEmpty())
-			return;
+    private BookingResponseDto convertToDto(Booking booking) {
 
-		int conflicts = bookingRepository.countConflictingSeats(flightId, seatParam);
-		if (conflicts > 0) {
-			List<String> conflicting = bookingRepository.findConflictingSeatNumbers(flightId, seatParam);
-			throw new ResponseStatusException(HttpStatus.CONFLICT, "Requested seat(s) already booked: " + conflicting);
-		}
-	}
+        BookingResponseDto dto = new BookingResponseDto();
+        dto.setPnr(booking.getPnr());
+        dto.setFlightId(booking.getFlightId());
+        dto.setUserEmail(booking.getUserEmail());
+        dto.setNumSeats(booking.getNumSeats());
+        dto.setTotalPrice(booking.getTotalPrice());
+        dto.setStatus(booking.getStatus());
+        dto.setCreatedAt(booking.getCreatedAt());
 
-	private BookingResponseDto convertToDto(Booking b) {
-		BookingResponseDto dto = new BookingResponseDto();
-		dto.setPnr(b.getPnr());
-		dto.setFlightId(b.getFlightId());
-		dto.setUserEmail(b.getUserEmail());
-		dto.setNumSeats(b.getNumSeats());
-		dto.setTotalPrice(b.getTotalPrice());
-		dto.setStatus(b.getStatus());
-		dto.setCreatedAt(b.getCreatedAt());
+        dto.setPassengers(
+                booking.getPassengers().stream()
+                        .map(p -> PersonDto.builder()
+                                .name(p.getPassengerName())
+                                .age(p.getAge())
+                                .gender(p.getGender())
+                                .seatNumber(p.getSeatNumber())
+                                .mealPreference(p.getMealPreference())
+                                .build())
+                        .toList()
+        );
 
-		List<PersonDto> pinfos = Optional.ofNullable(b.getPassengers()).orElse(Collections.emptyList()).stream()
-				.map(p -> PersonDto.builder().name(p.getPassengerName()).gender(p.getGender()).age(p.getAge())
-						.seatNumber(p.getSeatNumber()).mealPreference(p.getMealPreference()).build())
-				.toList();
+        return dto;
+    }
 
-		dto.setPassengers(pinfos);
-		return dto;
-	}
+    private void publishBookingEmail(Booking booking) {
+        emailPublisher.publishBookingCreated(
+                new EmailMessage(
+                        booking.getUserEmail(),
+                        "Booking Confirmed",
+                        "PNR: " + booking.getPnr()
+                )
+        );
+    }
 
-	private String generatePnr() {
-		return UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
-	}
+    private void publishCancelEmail(Booking booking) {
+        emailPublisher.publishBookingCancelled(
+                new EmailMessage(
+                        booking.getUserEmail(),
+                        "Booking Cancelled",
+                        "PNR: " + booking.getPnr()
+                )
+        );
+    }
 
-	private void registerAfterCommit(Runnable r) {
-		if (TransactionSynchronizationManager.isSynchronizationActive()) {
-			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-				@Override
-				public void afterCommit() {
-					try {
-						r.run();
-					} catch (Exception ex) {
-						log.error("afterCommit task failed: {}", ex.toString(), ex);
-					}
-				}
-			});
-		} else {
+    private void registerAfterCommit(Runnable task) {
 
-			try {
-				r.run();
-			} catch (Exception ex) {
-				log.error("Immediate task failed: {}", ex.toString(), ex);
-			}
-		}
-	}
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                    new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            task.run();
+                        }
+                    }
+            );
+        } else {
+            task.run();
+        }
+    }
 }

@@ -9,13 +9,21 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class EmailPublisher {
 
-	private final AmqpTemplate amqpTemplate;
+    private final AmqpTemplate amqpTemplate;
 
-	public void publishBookingCreated(EmailMessage msg) {
-		amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
-	}
+    public void publishBookingCreated(EmailMessage msg) {
+        amqpTemplate.convertAndSend(
+            "booking.exchange",
+            "booking.created",
+            msg
+        );
+    }
 
-	public void publishBookingCancelled(EmailMessage msg) {
-		amqpTemplate.convertAndSend(RabbitConfig.EMAIL_QUEUE, msg);
-	}
+    public void publishBookingCancelled(EmailMessage msg) {
+        amqpTemplate.convertAndSend(
+            "booking.exchange",
+            "booking.cancelled",
+            msg
+        );
+    }
 }

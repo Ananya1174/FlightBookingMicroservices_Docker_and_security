@@ -11,29 +11,27 @@ import org.springframework.stereotype.Service;
 public class EmailListener {
 
     private final JavaMailSender mailSender;
-    private final ObjectMapper objectMapper;
 
-    public EmailListener(JavaMailSender mailSender, ObjectMapper objectMapper) {
+    public EmailListener(JavaMailSender mailSender) {
         this.mailSender = mailSender;
-        this.objectMapper = objectMapper;
     }
 
     @RabbitListener(queues = "email.queue")
-    public void receive(String jsonPayload) {
-        try {
-            EmailMessage message = objectMapper.readValue(jsonPayload, EmailMessage.class);
+    public void receive(EmailMessage message) {
 
-            SimpleMailMessage mail = new SimpleMailMessage();
-            mail.setTo(message.getTo());
-            mail.setSubject(message.getSubject());
-            mail.setText(message.getBody());
-
-            mailSender.send(mail);
-
-            System.out.println("Email sent to: " + message.getTo());
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            throw new RuntimeException("Failed to process email message", ex);
+        // Safety guard
+        if (message.getTo() == null || !message.getTo().contains("@")) {
+            System.err.println("Invalid email received: " + message.getTo());
+            return; // ACK message, stop retry
         }
+
+        SimpleMailMessage mail = new SimpleMailMessage();
+        mail.setTo(message.getTo());
+        mail.setSubject(message.getSubject());
+        mail.setText(message.getBody());
+
+        mailSender.send(mail);
+
+        System.out.println("Email sent to: " + message.getTo());
     }
 }

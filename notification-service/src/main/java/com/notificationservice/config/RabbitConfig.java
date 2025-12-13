@@ -5,6 +5,8 @@ import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.converter.MessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 
 @Configuration
 public class RabbitConfig {
@@ -26,12 +28,16 @@ public class RabbitConfig {
 
     @Bean
     public Binding bindingCreated(Queue emailQueue, TopicExchange bookingExchange) {
-        return BindingBuilder.bind(emailQueue).to(bookingExchange).with(ROUTING_CREATED);
+        return BindingBuilder.bind(emailQueue)
+                .to(bookingExchange)
+                .with(ROUTING_CREATED);
     }
 
     @Bean
     public Binding bindingCancelled(Queue emailQueue, TopicExchange bookingExchange) {
-        return BindingBuilder.bind(emailQueue).to(bookingExchange).with(ROUTING_CANCELLED);
+        return BindingBuilder.bind(emailQueue)
+                .to(bookingExchange)
+                .with(ROUTING_CANCELLED);
     }
 
     @Bean
@@ -39,5 +45,11 @@ public class RabbitConfig {
         RabbitAdmin admin = new RabbitAdmin(connectionFactory);
         admin.setAutoStartup(true);
         return admin;
+    }
+
+    // ✅ Spring AMQP 4.x correct converter
+    @Bean
+    public MessageConverter messageConverter() {
+        return new JacksonJsonMessageConverter();
     }
 }

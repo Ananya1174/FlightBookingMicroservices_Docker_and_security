@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class FlightService {
@@ -110,41 +111,68 @@ public class FlightService {
 
 	@Transactional(readOnly = true)
 	public List<SearchResultDto> searchFlights(SearchRequest req) {
-		if (req == null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
-		}
-		if (isBlank(req.getOrigin()) || isBlank(req.getDestination())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "origin and destination are required");
-		}
-		if (req.getTravelDate() == null) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "travelDate is required");
-		}
 
-		LocalDate date = req.getTravelDate();
-		LocalDateTime start = date.atStartOfDay();
-		LocalDateTime end = date.atTime(LocalTime.MAX);
+	    if (req == null) {
+	        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+	    }
+	    if (isBlank(req.getOrigin()) || isBlank(req.getDestination())) {
+	        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "origin and destination are required");
+	    }
+	    if (req.getTravelDate() == null) {
+	        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "travelDate is required");
+	    }
 
-		List<Flight> flights = flightRepository.findByOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTimeBetween(
-				req.getOrigin(), req.getDestination(), start, end);
+	    LocalDate date = req.getTravelDate();
+	    LocalDateTime start = date.atStartOfDay();
+	    LocalDateTime end = date.atTime(LocalTime.MAX);
 
-		if (!isBlank(req.getTripType())) {
-			flights = flights.stream().filter(f -> req.getTripType().equalsIgnoreCase(f.getTripType())).toList();
-		}
+	    List<Flight> flights =
+	        flightRepository.findByOriginIgnoreCaseAndDestinationIgnoreCaseAndDepartureTimeBetween(
+	            req.getOrigin(), req.getDestination(), start, end
+	        );
+	    if (flights.isEmpty()) {
+	        String msg = String.format(
+	            "No flights found from %s to %s on %s",
+	            req.getOrigin(),
+	            req.getDestination(),
+	            req.getTravelDate()
+	        );
+	        throw new ResponseStatusException(HttpStatus.NOT_FOUND, msg);
+	    }
 
-		return flights.stream().map(f -> {
-			SearchResultDto r = new SearchResultDto();
-			r.setFlightId(f.getId());
-			r.setDepartureTime(f.getDepartureTime());
-			r.setArrivalTime(f.getArrivalTime());
-			r.setAirlineName(f.getAirlineName());
-			r.setAirlineLogoUrl(f.getAirlineLogoUrl());
-			r.setPrice(f.getPrice());
-			r.setTripType(f.getTripType());
-			int available = (int) Optional.ofNullable(f.getSeats()).orElse(Collections.emptyList()).stream()
-					.filter(s -> STATUS_AVAILABLE.equalsIgnoreCase(s.getStatus())).count();
-			r.setSeatsAvailable(available);
-			return r;
-		}).toList();
+	    // filter by trip type if provided
+	    if (!isBlank(req.getTripType())) {
+	        flights = flights.stream()
+	                .filter(f -> req.getTripType().equalsIgnoreCase(f.getTripType()))
+	                .toList();
+
+	        if (flights.isEmpty()) {
+	            throw new ResponseStatusException(
+	                HttpStatus.NOT_FOUND,
+	                "No flights available for tripType: " + req.getTripType()
+	            );
+	        }
+	    }
+
+	    return flights.stream().map(f -> {
+	        SearchResultDto r = new SearchResultDto();
+	        r.setFlightId(f.getId());
+	        r.setDepartureTime(f.getDepartureTime());
+	        r.setArrivalTime(f.getArrivalTime());
+	        r.setAirlineName(f.getAirlineName());
+	        r.setAirlineLogoUrl(f.getAirlineLogoUrl());
+	        r.setPrice(f.getPrice());
+	        r.setTripType(f.getTripType());
+
+	        int available = (int) Optional.ofNullable(f.getSeats())
+	                .orElse(Collections.emptyList())
+	                .stream()
+	                .filter(s -> STATUS_AVAILABLE.equalsIgnoreCase(s.getStatus()))
+	                .count();
+
+	        r.setSeatsAvailable(available);
+	        return r;
+	    }).toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -169,5 +197,53 @@ public class FlightService {
 				.map(s -> new com.flightservice.dto.FlightDetailDto.SeatDto(s.getSeatNumber(), s.getStatus())).toList();
 
 		return new com.flightservice.dto.FlightDetailDto(f.getId(), info, seats);
+	}
+	@Transactional
+	public void markSeatsBooked(Long flightId, List<SeatBookingRequest> seats) {
+
+	    Flight flight = flightRepository.findById(flightId)
+	            .orElseThrow(() ->
+	                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
+
+	    Map<String, String> seatToPassenger =
+	            seats.stream().collect(Collectors.toMap(
+	                    s -> s.getSeatNumber().trim().toUpperCase(),
+	                    SeatBookingRequest::getPassengerName
+	            ));
+
+	    for (FlightSeat seat : flight.getSeats()) {
+	        String seatNo = seat.getSeatNumber().toUpperCase();
+
+	        if (seatToPassenger.containsKey(seatNo)) {
+
+	            if (!"AVAILABLE".equalsIgnoreCase(seat.getStatus())) {
+	                throw new ResponseStatusException(
+	                        HttpStatus.CONFLICT,
+	                        "Seat already booked: " + seatNo
+	                );
+	            }
+
+	            seat.setStatus("BOOKED");
+	            seat.setPassengerName(seatToPassenger.get(seatNo));
+	        }
+	    }
+
+	    flightRepository.save(flight);
+	}
+
+	@Transactional
+	public void markSeatsAvailable(Long flightId, List<String> seatNumbers) {
+
+	    Flight flight = flightRepository.findById(flightId)
+	        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
+
+	    for (FlightSeat seat : flight.getSeats()) {
+	        if (seatNumbers.contains(seat.getSeatNumber())) {
+	            seat.setStatus("AVAILABLE");
+	            seat.setPassengerName(null);
+	        }
+	    }
+
+	    flightRepository.save(flight);
 	}
 }

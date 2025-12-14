@@ -19,7 +19,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final CustomAccessDeniedHandler accessDeniedHandler;
-    private final CustomAuthenticationEntryPoint authenticationEntryPoint; // ✅ MISSING LINE
+    private final CustomAuthenticationEntryPoint authenticationEntryPoint;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -28,20 +28,21 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // ADMIN only
-                .requestMatchers("/api/flight/airline/inventory/add").hasRole("ADMIN")
 
-                // public endpoints
-                .requestMatchers(
-                        "/api/flight/search",
-                        "/api/flight/*"
-                    ).permitAll()
+                // ✅ PUBLIC – search flight
+            		.requestMatchers(
+            		        "/api/flight/search",
+            		        "/flight-service/api/flight/search"
+            		    ).permitAll()
+
+                // 🔒 ADMIN only
+                .requestMatchers("/api/flight/airline/inventory/add").hasRole("ADMIN")
 
                 // everything else requires authentication
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(authenticationEntryPoint) // ✅ now resolved
+                .authenticationEntryPoint(authenticationEntryPoint)
                 .accessDeniedHandler(accessDeniedHandler)
             );
 

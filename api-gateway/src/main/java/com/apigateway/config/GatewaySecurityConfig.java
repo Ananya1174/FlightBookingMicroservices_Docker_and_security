@@ -9,34 +9,16 @@ import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
 @Configuration
-@RequiredArgsConstructor
 public class GatewaySecurityConfig {
-
-    private final CustomAuthEntryPoint authEntryPoint;
 
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 
-        http
-            .csrf(csrf -> csrf.disable())
-            .httpBasic(b -> b.disable())
-            .formLogin(f -> f.disable())
-
-            .authorizeExchange(ex -> ex
-            		.pathMatchers(
-            			    "/auth-service/**"
-            			).permitAll()
-                .pathMatchers("/booking-service/**", "/flight-service/**").permitAll()
-                .pathMatchers(HttpMethod.OPTIONS).permitAll()
-                .pathMatchers("/actuator/**", "/actuator").permitAll()
-                .anyExchange().authenticated()
-            )
-
-            // ⭐ THIS IS THE KEY LINE
-            .exceptionHandling(ex -> ex
-                .authenticationEntryPoint(authEntryPoint)
-            );
-
-        return http.build();
+        return http
+            .csrf(ServerHttpSecurity.CsrfSpec::disable)
+            .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
+            .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
+            .authorizeExchange(ex -> ex.anyExchange().permitAll())
+            .build();
     }
 }

@@ -7,10 +7,9 @@ services:
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: "Ananya2004!"
-      # Optionally create a default DB, but we also use init scripts to create multiple DBs
       MYSQL_DATABASE: "authdb"
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./mysql-init:/docker-entrypoint-initdb.d:ro
@@ -23,143 +22,125 @@ services:
     restart: unless-stopped
     ports:
       - "5672:5672"
-      - "15672:15672" # management UI
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      - "15672:15672"
     networks:
       - backend
 
   service-registry:
-    build:
-      context: ./service-registry
-      dockerfile: Dockerfile
+    build: ./service-registry
     container_name: service-registry
-    environment:
-      - SPRING_PROFILES_ACTIVE=default
-      - SERVER_PORT=8761
     ports:
       - "8761:8761"
-    depends_on:
-      - mysql
     networks:
       - backend
 
   config-server:
-    build:
-      context: ./config-server
-      dockerfile: Dockerfile
+    build: ./config-server
     container_name: config-server
-    environment:
-      - SERVER_PORT=8888
-      # If you prefer to override the git URI via env:
-      # - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=https://github.com/Ananya1174/flight-config-server
     ports:
       - "8888:8888"
     depends_on:
       - service-registry
-    networks:
-      - backend
-
-  notification-service:
-    build:
-      context: ./notification-service
-      dockerfile: Dockerfile
-    container_name: notification-service
-    environment:
-      - SERVER_PORT=8090
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - SPRING_RABBITMQ_PORT=5672
-      - SPRING_MAIL_HOST=smtp.gmail.com
-      # WARNING: DO NOT store real passwords here in production. Use secrets.
-      - SPRING_MAIL_USERNAME=charliektest11@gmail.com
-      - SPRING_MAIL_PASSWORD=yses ebhf nilw wruc
-    ports:
-      - "8090:8090"
-    depends_on:
-      - rabbitmq
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
     networks:
       - backend
 
   auth-service:
-    build:
-      context: ./auth-service
-      dockerfile: Dockerfile
+    build: ./auth-service
     container_name: auth-service
     environment:
-      - SERVER_PORT=8085
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/authdb?useSSL=false&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONFIG_FAIL_FAST=true
     ports:
       - "8085:8085"
     depends_on:
-      - mysql
-      - service-registry
+      config-server:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+      service-registry:
+        condition: service_started
     networks:
       - backend
 
   flight-service:
-    build:
-      context: ./flight-service
-      dockerfile: Dockerfile
+    build: ./flight-service
     container_name: flight-service
     environment:
-      - SERVER_PORT=8081
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/flightdb_micro?useSSL=false&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
       - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONFIG_FAIL_FAST=true
     ports:
       - "8081:8081"
     depends_on:
-      - mysql
-      - service-registry
-      - config-server
+      config-server:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+      service-registry:
+        condition: service_started
     networks:
       - backend
 
   booking-service:
-    build:
-      context: ./booking-service
-      dockerfile: Dockerfile
+    build: ./booking-service
     container_name: booking-service
     environment:
-      - SERVER_PORT=8082
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/bookingdb_micro?useSSL=false&serverTimezone=UTC
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=Ananya2004!
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
       - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
-      - SPRING_RABBITMQ_HOST=rabbitmq
-      - SPRING_RABBITMQ_PORT=5672
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONFIG_FAIL_FAST=true
     ports:
       - "8082:8082"
     depends_on:
-      - mysql
-      - rabbitmq
-      - service-registry
-      - config-server
+      config-server:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      service-registry:
+        condition: service_started
+    networks:
+      - backend
+
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    environment:
+      - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONFIG_FAIL_FAST=true
+    ports:
+      - "8090:8090"
+    depends_on:
+      config-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      service-registry:
+        condition: service_started
     networks:
       - backend
 
   api-gateway:
-    build:
-      context: ./api-gateway
-      dockerfile: Dockerfile
+    build: ./api-gateway
     container_name: api-gateway
     environment:
-      - SERVER_PORT=8087
       - SPRING_CONFIG_IMPORT=configserver:http://config-server:8888
-      - SPRING_CLOUD_GATEWAY_DISCOVERY_LOCATOR_ENABLED=true
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_CLOUD_CONFIG_FAIL_FAST=true
     ports:
       - "8087:8087"
     depends_on:
-      - service-registry
-      - config-server
+      config-server:
+        condition: service_healthy
+      service-registry:
+        condition: service_started
     networks:
       - backend
 

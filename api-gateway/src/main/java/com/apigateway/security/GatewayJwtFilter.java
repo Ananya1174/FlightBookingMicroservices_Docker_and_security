@@ -7,6 +7,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
@@ -24,11 +25,14 @@ public class GatewayJwtFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+
         String path = exchange.getRequest().getURI().getPath();
 
-        // allow auth endpoints through (signup/signin)
-        if (path.startsWith("/auth") || path.startsWith("/AUTH-SERVICE") || path.startsWith("/auth-service")
-                || exchange.getRequest().getMethod() != null && exchange.getRequest().getMethod().name().equals("OPTIONS")) {
+        if (path.contains("/auth/signup") || path.contains("/auth/signin")) {
+            return chain.filter(exchange);
+        }
+
+        if (exchange.getRequest().getMethod() == HttpMethod.OPTIONS) {
             return chain.filter(exchange);
         }
 
@@ -40,6 +44,7 @@ public class GatewayJwtFilter implements GlobalFilter, Ordered {
         }
 
         String token = authHeader.substring(7);
+
         try {
             Jws<Claims> parsed = Jwts.parserBuilder()
                     .setSigningKey(Keys.hmacShaKeyFor(jwtSecret.getBytes()))
@@ -47,20 +52,18 @@ public class GatewayJwtFilter implements GlobalFilter, Ordered {
                     .parseClaimsJws(token);
 
             Claims claims = parsed.getBody();
-            String subject = claims.getSubject(); // usually username/email
+            String subject = claims.getSubject();
             List<String> roles = claims.get("roles", List.class);
 
-            // forward original Authorization + add helpful headers for downstream services
             ServerHttpRequest mutated = exchange.getRequest().mutate()
                     .header(HttpHeaders.AUTHORIZATION, authHeader)
                     .header("X-User-Email", subject == null ? "" : subject)
                     .header("X-User-Roles", roles == null ? "" : String.join(",", roles))
                     .build();
 
-            ServerWebExchange newEx = exchange.mutate().request(mutated).build();
-            return chain.filter(newEx);
+            return chain.filter(exchange.mutate().request(mutated).build());
 
-        } catch (Exception ex) {
+        } catch (Exception e) {
             exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
             return exchange.getResponse().setComplete();
         }

@@ -23,7 +23,9 @@ public class GatewaySecurityConfig {
             .formLogin(f -> f.disable())
 
             .authorizeExchange(ex -> ex
-                .pathMatchers("/auth/**", "/AUTH-SERVICE/**", "/auth-service/**").permitAll()
+            		.pathMatchers(
+            			    "/auth-service/**"
+            			).permitAll()
                 .pathMatchers("/booking-service/**", "/flight-service/**").permitAll()
                 .pathMatchers(HttpMethod.OPTIONS).permitAll()
                 .pathMatchers("/actuator/**", "/actuator").permitAll()

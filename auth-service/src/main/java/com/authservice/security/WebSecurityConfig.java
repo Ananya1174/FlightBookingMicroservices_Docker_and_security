@@ -41,7 +41,6 @@ public class WebSecurityConfig {
         http.csrf(csrf -> csrf.disable());
 
         http.authorizeHttpRequests(auth -> auth
-                // allow POST to signup and signin and OPTIONS (CORS preflight)
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/auth/signup", "/auth/signin").permitAll()
                 .requestMatchers("/actuator/**").permitAll()

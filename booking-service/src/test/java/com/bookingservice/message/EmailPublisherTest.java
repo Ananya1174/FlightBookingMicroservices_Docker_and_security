@@ -1,6 +1,8 @@
 package com.bookingservice.message;
 
 import com.bookingservice.config.RabbitConfig;
+import com.flightapp.message.EmailMessage;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.*;

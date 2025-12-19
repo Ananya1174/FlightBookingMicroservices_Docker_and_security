@@ -4,11 +4,12 @@ import com.bookingservice.client.FlightClientService;
 import com.bookingservice.client.dto.FlightDto;
 import com.bookingservice.client.dto.FlightInfoDto;
 import com.bookingservice.dto.*;
-import com.bookingservice.message.EmailMessage;
 import com.bookingservice.message.EmailPublisher;
 import com.bookingservice.model.Booking;
 import com.bookingservice.model.Passenger;
 import com.bookingservice.repository.BookingRepository;
+import com.flightapp.message.EmailMessage;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

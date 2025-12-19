@@ -1,6 +1,8 @@
 package com.bookingservice.message;
 
 import com.bookingservice.config.RabbitConfig;
+import com.flightapp.message.EmailMessage;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.amqp.core.AmqpTemplate;
 import org.springframework.stereotype.Component;

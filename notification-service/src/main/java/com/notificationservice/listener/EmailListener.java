@@ -1,7 +1,6 @@
 package com.notificationservice.listener;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.notificationservice.message.EmailMessage;
+import com.flightapp.message.EmailMessage;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -19,10 +18,9 @@ public class EmailListener {
     @RabbitListener(queues = "email.queue")
     public void receive(EmailMessage message) {
 
-        // Safety guard
         if (message.getTo() == null || !message.getTo().contains("@")) {
             System.err.println("Invalid email received: " + message.getTo());
-            return; // ACK message, stop retry
+            return;
         }
 
         SimpleMailMessage mail = new SimpleMailMessage();

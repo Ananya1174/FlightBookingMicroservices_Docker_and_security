@@ -1,4 +1,4 @@
-package com.bookingservice.message;
+package com.flightapp.message;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

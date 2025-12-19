@@ -4,11 +4,12 @@ import com.bookingservice.client.FlightClientService;
 import com.bookingservice.client.dto.FlightDto;
 import com.bookingservice.client.dto.SeatBookingRequest;
 import com.bookingservice.dto.*;
-import com.bookingservice.message.EmailMessage;
 import com.bookingservice.message.EmailPublisher;
 import com.bookingservice.model.Booking;
 import com.bookingservice.model.Passenger;
 import com.bookingservice.repository.BookingRepository;
+import com.flightapp.message.EmailMessage;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -282,22 +283,83 @@ public class BookingService {
     }
 
     private void publishBookingEmail(Booking booking) {
+
+        String body = """
+            Dear Customer,
+
+            We are pleased to inform you that your flight booking has been successfully confirmed.
+
+            Booking Details:
+            ----------------
+            PNR           : %s
+            Flight ID     : %d
+            Number of Seats: %d
+            Seat Numbers  : %s
+            Total Amount  : ₹%.2f
+            Booking Date  : %s
+
+            Please keep this PNR for future reference. You may be required to present it during check-in or while contacting customer support.
+
+            We wish you a comfortable and pleasant journey.
+
+            Sincerely,
+            Flight Booking Support Team
+            """.formatted(
+                booking.getPnr(),
+                booking.getFlightId(),
+                booking.getNumSeats(),
+                booking.getPassengers()
+                       .stream()
+                       .map(Passenger::getSeatNumber)
+                       .toList(),
+                booking.getTotalPrice(),
+                booking.getCreatedAt()
+        );
+
         emailPublisher.publishBookingCreated(
-                new EmailMessage(
-                        booking.getUserEmail(),
-                        "Booking Confirmed",
-                        "PNR: " + booking.getPnr()
-                )
+            new EmailMessage(
+                booking.getUserEmail(),
+                "Flight Booking Confirmation – PNR " + booking.getPnr(),
+                body
+            )
         );
     }
 
     private void publishCancelEmail(Booking booking) {
+
+        String body = """
+            Dear Customer,
+
+            This email is to confirm that your flight booking has been successfully cancelled as per your request.
+
+            Cancellation Details:
+            ---------------------
+            PNR           : %s
+            Flight ID     : %d
+            Number of Seats: %d
+            Cancelled On  : %s
+
+            If any applicable refund is initiated, it will be processed according to the airline's cancellation policy and credited to your original payment method.
+
+            If you have any questions or require further assistance, please contact our customer support team.
+
+            Thank you for using our flight booking service.
+
+            Sincerely,
+            Flight Booking Support Team
+            """.formatted(
+                booking.getPnr(),
+                booking.getFlightId(),
+                booking.getNumSeats(),
+                booking.getCancelledAt()
+        );
+
         emailPublisher.publishBookingCancelled(
-                new EmailMessage(
-                        booking.getUserEmail(),
-                        "Booking Cancelled",
-                        "PNR: " + booking.getPnr()
-                )
+            new EmailMessage(
+                booking.getUserEmail(),
+                "Flight Booking Cancellation – PNR " + booking.getPnr(),
+                body
+            )
         );
     }
 

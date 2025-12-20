@@ -47,6 +47,7 @@ public class BookingController {
 
         return ResponseEntity.created(location).body(resp);
     }
+    
 
     /**
      * Public: get booking by PNR (any authenticated user can query details).

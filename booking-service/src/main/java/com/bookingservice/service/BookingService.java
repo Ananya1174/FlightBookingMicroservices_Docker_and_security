@@ -21,6 +21,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
@@ -42,9 +43,6 @@ public class BookingService {
         this.emailPublisher = emailPublisher;
     }
 
-    // =====================================================
-    // CREATE BOOKING
-    // =====================================================
     @Transactional
     public BookingResponseDto createBooking(
             BookingRequest request, String headerEmail, Long flightId) {
@@ -52,6 +50,7 @@ public class BookingService {
         validateAndNormalizeRequest(request, headerEmail);
 
         FlightDto flight = flightClientService.getFlightById(flightId);
+        
 
         ensureSeatAvailabilityOrThrow(flight, request.getNumSeats());
 
@@ -67,6 +66,7 @@ public class BookingService {
 
         Booking booking =
                 buildBookingEntity(request, totalPrice, flightId, headerEmail);
+        booking.setDepartureTime(flight.getDepartureTime());
 
         Booking saved = bookingRepository.save(booking);
 
@@ -89,9 +89,6 @@ public class BookingService {
         return convertToDto(saved);
     }
 
-    // =====================================================
-    // CANCEL BOOKING (24-HOUR RULE)
-    // =====================================================
     @Transactional
     public BookingResponseDto cancelBooking(String pnr, String headerEmail) {
 
@@ -103,18 +100,22 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not your booking");
         }
 
-        // ✅ 24-hour cancellation validation
-        long hoursSinceBooking =
-                Duration.between(booking.getCreatedAt(), Instant.now()).toHours();
+        long hoursBeforeDeparture =
+                Duration.between(
+                        LocalDateTime.now(),
+                        booking.getDepartureTime()
+                ).toHours();
 
-        if (hoursSinceBooking > 24) {
+        if (hoursBeforeDeparture < 24) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Cancellation allowed only within 24 hours of booking"
+                    "Cancellation not allowed within 24 hours of departure"
             );
         }
 
-        int updated = bookingRepository.cancelIfActive(pnr, Instant.now());
+        Instant cancelledAt = Instant.now();   
+
+        int updated = bookingRepository.cancelIfActive(pnr, cancelledAt);
         if (updated == 0) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -129,12 +130,13 @@ public class BookingService {
                                 "Booking missing"
                         ));
 
+        saved.setCancelledAt(cancelledAt);
+
         List<String> seatNumbers = saved.getPassengers().stream()
                 .map(Passenger::getSeatNumber)
                 .map(String::toUpperCase)
                 .toList();
 
-        // 🔓 Release seats AFTER commit
         registerAfterCommit(() ->
                 flightClientService.releaseSeats(saved.getFlightId(), seatNumbers)
         );
@@ -143,9 +145,7 @@ public class BookingService {
         return convertToDto(saved);
     }
 
-    // =====================================================
-    // GET BOOKING BY PNR
-    // =====================================================
+  
     @Transactional(readOnly = true)
     public BookingResponseDto getByPnr(String pnr) {
 
@@ -156,9 +156,7 @@ public class BookingService {
         return convertToDto(booking);
     }
 
-    // =====================================================
-    // BOOKING HISTORY
-    // =====================================================
+  
     @Transactional(readOnly = true)
     public List<BookingResponseDto> getHistoryByEmail(String email) {
 
@@ -168,10 +166,8 @@ public class BookingService {
                 .map(this::convertToDto)
                 .toList();
     }
-
-    // =====================================================
-    // HELPERS
-    // =====================================================
+    
+   
 
     private void validateAndNormalizeRequest(BookingRequest request, String email) {
 
@@ -266,6 +262,7 @@ public class BookingService {
         dto.setTotalPrice(booking.getTotalPrice());
         dto.setStatus(booking.getStatus());
         dto.setCreatedAt(booking.getCreatedAt());
+        dto.setDepartureTime(booking.getDepartureTime());
 
         dto.setPassengers(
                 booking.getPassengers().stream()

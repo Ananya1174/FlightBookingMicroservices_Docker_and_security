@@ -3,6 +3,9 @@ package com.bookingservice.client.dto;
 import com.bookingservice.dto.SeatDto;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import lombok.*;
+
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
@@ -26,5 +29,11 @@ public class FlightDto {
 	public String getFlightNumber() {
 		return info == null ? null : info.getFlightNumber();
 	}
+
+	public LocalDateTime getDepartureTime() {
+		
+		return info == null ? null : info.getDepartureTime();
+	}
+	
 
 }

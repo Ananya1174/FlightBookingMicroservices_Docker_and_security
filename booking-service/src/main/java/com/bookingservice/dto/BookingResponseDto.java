@@ -1,6 +1,7 @@
 package com.bookingservice.dto;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.*;
 
@@ -17,5 +18,6 @@ public class BookingResponseDto {
     private Double totalPrice;
     private String status;
     private Instant createdAt;
+    private LocalDateTime departureTime;
     private List<PersonDto> passengers;
 }

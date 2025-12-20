@@ -11,12 +11,17 @@ import com.authservice.repository.UserRepository;
 import com.authservice.security.JwtUtils;
 import com.authservice.security.UserDetailsImpl;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/auth")
@@ -29,14 +34,21 @@ public class AuthController {
     private final PasswordEncoder encoder;
     private final JwtUtils jwtUtils;
 
+  
     @PostMapping("/signup")
-    public String register(@RequestBody SignupRequest req) {
+    public ResponseEntity<String> register(@RequestBody SignupRequest req) {
 
-        if (userRepo.existsByUsername(req.getUsername()))
-            return "Username already exists";
+        if (userRepo.existsByUsername(req.getUsername())) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Username already exists");
+        }
 
-        if (userRepo.existsByEmail(req.getEmail()))
-            return "Email already exists";
+        if (userRepo.existsByEmail(req.getEmail())) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body("Email already exists");
+        }
 
         User user = new User();
         user.setUsername(req.getUsername());
@@ -52,9 +64,13 @@ public class AuthController {
         } else {
             req.getRole().forEach(r -> {
                 if (r.equalsIgnoreCase("admin")) {
-                    roles.add(roleRepo.findByName(ERole.ROLE_ADMIN).orElseThrow());
+                    roles.add(
+                        roleRepo.findByName(ERole.ROLE_ADMIN).orElseThrow()
+                    );
                 } else {
-                    roles.add(roleRepo.findByName(ERole.ROLE_USER).orElseThrow());
+                    roles.add(
+                        roleRepo.findByName(ERole.ROLE_USER).orElseThrow()
+                    );
                 }
             });
         }
@@ -62,22 +78,29 @@ public class AuthController {
         user.setRoles(roles);
         userRepo.save(user);
 
-        return "User registered successfully!";
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body("User registered successfully!");
     }
 
     @PostMapping("/signin")
     public JwtResponse login(@RequestBody LoginRequest req) {
 
-    	var auth = authManager.authenticate(
-    	        new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
-    	);
+        var auth = authManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        req.getEmail(),
+                        req.getPassword()
+                )
+        );
 
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
 
         String token = jwtUtils.generateJwtToken(user);
 
         List<String> roles = user.getAuthorities()
-                .stream().map(a -> a.getAuthority()).toList();
+                .stream()
+                .map(a -> a.getAuthority())
+                .toList();
 
         return new JwtResponse(
                 token,

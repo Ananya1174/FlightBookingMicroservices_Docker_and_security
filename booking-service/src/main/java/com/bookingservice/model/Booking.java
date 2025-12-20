@@ -2,6 +2,7 @@ package com.bookingservice.model;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 import lombok.*;
 
@@ -37,7 +38,10 @@ public class Booking {
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
-
+    
+    @Column(name = "departure_time", nullable = false)
+    private LocalDateTime departureTime;
+    
     @Version
     private Long version;
 

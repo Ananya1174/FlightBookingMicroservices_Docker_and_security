@@ -1,18 +1,23 @@
 package com.authservice.security;
 
+import com.authservice.model.User;
+import com.authservice.repository.UserRepository;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class JwtUtils {
 
     @Value("${jwt.secret}")
@@ -21,6 +26,8 @@ public class JwtUtils {
     @Value("${jwt.expirationSeconds:3600}")
     private long jwtExpirationSeconds;
 
+    private final UserRepository userRepository;
+
     private Key key;
 
     @PostConstruct
@@ -28,13 +35,19 @@ public class JwtUtils {
         this.key = Keys.hmacShaKeyFor(jwtSecret.getBytes());
     }
 
-    public String generateJwtToken(UserDetailsImpl user) {
-        long now = System.currentTimeMillis();
-        List<String> roles = user.getAuthorities().stream().map(GrantedAuthority::getAuthority).toList();
+    // ================= TOKEN GENERATION =================
 
-        // Use email as subject
+    public String generateJwtToken(UserDetailsImpl user) {
+
+        long now = System.currentTimeMillis();
+
+        List<String> roles = user.getAuthorities()
+                .stream()
+                .map(GrantedAuthority::getAuthority)
+                .toList();
+
         return Jwts.builder()
-                .setSubject(user.getEmail())    // <-- changed to email
+                .setSubject(user.getEmail()) // email as subject
                 .claim("roles", roles)
                 .setIssuedAt(new Date(now))
                 .setExpiration(new Date(now + jwtExpirationSeconds * 1000))
@@ -42,31 +55,65 @@ public class JwtUtils {
                 .compact();
     }
 
+    // ================= TOKEN EXTRACTION =================
+
     public String extractUsername(String token) {
         try {
-            return Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody().getSubject();
+            return Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody()
+                    .getSubject();
         } catch (JwtException ex) {
-            // invalid token
             return null;
         }
     }
 
-    /**
-     * Validate token against a UserDetails (interface) rather than concrete impl.
-     * This keeps the API generic and avoids casting in callers.
-     */
+    // ================= TOKEN VALIDATION =================
+
     public boolean validateToken(String token, UserDetails userDetails) {
+
         try {
-            var claims = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
             String subject = claims.getSubject();
             Date expiration = claims.getExpiration();
+            Date issuedAt = claims.getIssuedAt();
 
-            // If userDetails is our implementation, compare with its email. Otherwise fall back to username.
-            String compareWith = userDetails instanceof UserDetailsImpl
-                    ? ((UserDetailsImpl) userDetails).getEmail()
-                    : userDetails.getUsername();
+            if (subject == null || expiration.before(new Date())) {
+                return false;
+            }
 
-            return (subject != null && subject.equals(compareWith) && expiration.after(new Date()));
+            // match email
+            String emailFromUserDetails =
+                    userDetails instanceof UserDetailsImpl
+                            ? ((UserDetailsImpl) userDetails).getEmail()
+                            : userDetails.getUsername();
+
+            if (!subject.equals(emailFromUserDetails)) {
+                return false;
+            }
+
+            // 🔐 PASSWORD CHANGE INVALIDATION (OPTION 1)
+            User user = userRepository.findByEmail(subject).orElse(null);
+            if (user == null) {
+                return false;
+            }
+
+            Instant passwordChangedAt = user.getPasswordLastChangedAt();
+            if (passwordChangedAt != null && issuedAt != null) {
+                if (issuedAt.toInstant().isBefore(passwordChangedAt)) {
+                    return false; // token issued before password change
+                }
+            }
+
+            return true;
+
         } catch (JwtException | IllegalArgumentException ex) {
             return false;
         }

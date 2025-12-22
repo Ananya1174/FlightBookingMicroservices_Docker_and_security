@@ -1,4 +1,4 @@
-version: "3.9"
+# version: "3.9"
 
 services:
   mysql:
@@ -29,6 +29,8 @@ services:
   service-registry:
     build: ./service-registry
     container_name: service-registry
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
     ports:
       - "8761:8761"
     networks:
@@ -37,12 +39,15 @@ services:
   config-server:
     build: ./config-server
     container_name: config-server
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
     ports:
       - "8888:8888"
     depends_on:
-      - service-registry
+      service-registry:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/actuator/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8888/actuator/health" ]
       interval: 5s
       timeout: 3s
       retries: 15
@@ -61,9 +66,9 @@ services:
     depends_on:
       config-server:
         condition: service_healthy
-      mysql:
-        condition: service_started
       service-registry:
+        condition: service_started
+      mysql:
         condition: service_started
     networks:
       - backend
@@ -80,9 +85,9 @@ services:
     depends_on:
       config-server:
         condition: service_healthy
-      mysql:
-        condition: service_started
       service-registry:
+        condition: service_started
+      mysql:
         condition: service_started
     networks:
       - backend
@@ -99,11 +104,11 @@ services:
     depends_on:
       config-server:
         condition: service_healthy
+      service-registry:
+        condition: service_started
       mysql:
         condition: service_started
       rabbitmq:
-        condition: service_started
-      service-registry:
         condition: service_started
     networks:
       - backend
@@ -120,9 +125,9 @@ services:
     depends_on:
       config-server:
         condition: service_healthy
-      rabbitmq:
-        condition: service_started
       service-registry:
+        condition: service_started
+      rabbitmq:
         condition: service_started
     networks:
       - backend
@@ -146,6 +151,7 @@ services:
 
 volumes:
   mysql-data:
+
 
 networks:
   backend:

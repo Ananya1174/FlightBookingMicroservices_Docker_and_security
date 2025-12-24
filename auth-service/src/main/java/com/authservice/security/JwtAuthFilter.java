@@ -1,5 +1,6 @@
 package com.authservice.security;
 
+import com.authservice.model.User;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,15 +21,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtUtils jwtUtils;
     private final UserDetailsServiceImpl userDetailsService;
 
-    /**
-     * Skip JWT validation ONLY for public endpoints.
-     * IMPORTANT:
-     * - /auth/signin  -> public
-     * - /auth/signup  -> public
-     * - /actuator/**  -> public
-     *
-     * DO NOT skip /auth/change-password
-     */
+    // ---------- PUBLIC ENDPOINTS ----------
     private boolean isPublicEndpoint(HttpServletRequest request) {
         String uri = request.getRequestURI().toLowerCase();
 
@@ -44,7 +37,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        // ✅ Skip JWT processing for public endpoints only
+        // ✅ Skip JWT processing for public endpoints
         if (isPublicEndpoint(request)) {
             filterChain.doFilter(request, response);
             return;
@@ -54,15 +47,31 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             String header = request.getHeader("Authorization");
 
             if (header != null && header.startsWith("Bearer ")) {
-                String token = header.substring(7);
 
+                String token = header.substring(7);
                 String email = jwtUtils.extractUsername(token);
 
-                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (email != null &&
+                    SecurityContextHolder.getContext().getAuthentication() == null) {
+
+                    // 🔐 Load full user entity
+                    User user = userDetailsService.getUserByEmail(email);
+
+                    // 🔐 OPTION A: FORCE PASSWORD CHANGE AFTER EXPIRY
+                    if (user.isPasswordChangeRequired()
+                            && !request.getRequestURI().equals("/auth/change-password")) {
+
+                        response.sendError(
+                                HttpServletResponse.SC_FORBIDDEN,
+                                "Password expired. Please change your password."
+                        );
+                        return;
+                    }
 
                     var userDetails = userDetailsService.loadUserByUsername(email);
 
                     if (jwtUtils.validateToken(token, userDetails)) {
+
                         UsernamePasswordAuthenticationToken authToken =
                                 new UsernamePasswordAuthenticationToken(
                                         userDetails,
@@ -79,7 +88,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 }
             }
         } catch (Exception ex) {
-            // Do NOT break the request flow
             logger.debug("JWT processing failed: " + ex.getMessage(), ex);
         }
 

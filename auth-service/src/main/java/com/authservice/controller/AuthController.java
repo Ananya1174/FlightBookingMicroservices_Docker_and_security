@@ -19,12 +19,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.authservice.security.PasswordPolicyValidator;
+import java.time.Duration;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -52,7 +55,8 @@ public class AuthController {
         user.setEmail(req.getEmail());
         user.setPassword(encoder.encode(req.getPassword()));
         user.setPasswordLastChangedAt(Instant.now());
-
+        user.setPasswordChangeRequired(false);
+        
         Set<com.authservice.model.Role> roles = new HashSet<>();
 
         if (req.getRole() == null) {
@@ -78,24 +82,33 @@ public class AuthController {
     public JwtResponse login(@RequestBody LoginRequest req) {
 
         var auth = authManager.authenticate(
-                new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
+            new UsernamePasswordAuthenticationToken(req.getEmail(), req.getPassword())
         );
 
-        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
-        String token = jwtUtils.generateJwtToken(user);
+        UserDetailsImpl userDetails = (UserDetailsImpl) auth.getPrincipal();
+        User user = userRepo.findByEmail(userDetails.getEmail()).orElseThrow();
 
-        List<String> roles = user.getAuthorities()
-                .stream()
-                .map(a -> a.getAuthority())
-                .toList();
+        long days =
+            Duration.between(user.getPasswordLastChangedAt(), Instant.now()).toDays();
+
+        if (days >= 90) {
+            user.setPasswordChangeRequired(true);
+            userRepo.save(user);
+            throw new ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Password expired. Please change your password."
+            );
+        }
 
         return new JwtResponse(
-                token,
-                "Bearer",
-                user.getId(),
-                user.getUsername(),
-                user.getEmail(),
-                roles
+            jwtUtils.generateJwtToken(userDetails),
+            "Bearer",
+            user.getId(),
+            user.getUsername(),
+            user.getEmail(),
+            userDetails.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .toList()
         );
     }
 
@@ -103,25 +116,20 @@ public class AuthController {
     @PutMapping("/change-password")
     public ResponseEntity<String> changePassword(
             @AuthenticationPrincipal UserDetailsImpl principal,
-            @Valid @RequestBody ChangePasswordRequest request
-    ) {
+            @RequestBody ChangePasswordRequest request) {
 
         User user = userRepo.findByEmail(principal.getEmail())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // verify current password
         if (!encoder.matches(request.getCurrentPassword(), user.getPassword())) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body("Current password is incorrect");
+            return ResponseEntity.badRequest().body("Current password is incorrect");
         }
 
-        // prevent reusing same password
         if (encoder.matches(request.getNewPassword(), user.getPassword())) {
-            return ResponseEntity
-                    .status(HttpStatus.BAD_REQUEST)
-                    .body("New password must be different from current password");
+            return ResponseEntity.badRequest().body("New password must not be same as old password");
         }
+
+        PasswordPolicyValidator.validate(request.getNewPassword());
 
         user.setPassword(encoder.encode(request.getNewPassword()));
         user.setPasswordLastChangedAt(Instant.now());
@@ -131,5 +139,4 @@ public class AuthController {
 
         return ResponseEntity.ok("Password changed successfully. Please login again.");
     }
-    
 }

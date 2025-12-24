@@ -16,7 +16,6 @@ public class SignupRequest {
     private String email;
 
     @NotBlank(message = "password must not be blank")
-    @Size(min = 6, message = "password must be at least 6 characters")
     private String password;
 
     // optional roles passed from client (e.g. ["admin"] or ["user"])

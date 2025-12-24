@@ -29,16 +29,11 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
 
-                // ✅ PUBLIC – search flight
             		.requestMatchers(
             		        "/api/flight/search",
             		        "/flight-service/api/flight/search"
-            		    ).permitAll()
-
-                // 🔒 ADMIN only
+            		    ).permitAll()               
                 .requestMatchers("/api/flight/airline/inventory/add").hasRole("ADMIN")
-
-                // everything else requires authentication
                 .anyRequest().authenticated()
             )
             .exceptionHandling(ex -> ex

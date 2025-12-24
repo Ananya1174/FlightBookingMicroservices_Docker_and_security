@@ -17,7 +17,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
 	List<Booking> findByUserEmailOrderByCreatedAtDesc(String email);
 
-	@Modifying
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("UPDATE Booking b SET b.status = 'CANCELLED', b.cancelledAt = :cancelledAt WHERE b.pnr = :pnr AND UPPER(b.status) <> 'CANCELLED'")
 	int cancelIfActive(@Param("pnr") String pnr, @Param("cancelledAt") Instant cancelledAt);
 

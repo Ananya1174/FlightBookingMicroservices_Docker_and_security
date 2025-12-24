@@ -130,7 +130,7 @@ public class BookingService {
                                 "Booking missing"
                         ));
 
-        saved.setCancelledAt(cancelledAt);
+        
 
         List<String> seatNumbers = saved.getPassengers().stream()
                 .map(Passenger::getSeatNumber)

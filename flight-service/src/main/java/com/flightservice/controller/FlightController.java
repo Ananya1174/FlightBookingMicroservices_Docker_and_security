@@ -67,6 +67,14 @@ public class FlightController {
 
         return ResponseEntity.ok(resp);
     }
+    @GetMapping("/{flightId}/seats")
+    public ResponseEntity<List<FlightSeatDto>> getSeatMap(
+            @PathVariable Long flightId) {
+
+        return ResponseEntity.ok(
+                flightService.getSeatMap(flightId)
+        );
+    }
     @PostMapping("/{flightId}/seats/book")
     public ResponseEntity<Void> bookSeats(
             @PathVariable Long flightId,

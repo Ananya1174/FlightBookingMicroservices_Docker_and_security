@@ -91,24 +91,26 @@ public class AuthController {
         long days =
             Duration.between(user.getPasswordLastChangedAt(), Instant.now()).toDays();
 
-        if (days >= 90) {
+        boolean passwordExpired = days >= 90;
+
+        if (passwordExpired) {
             user.setPasswordChangeRequired(true);
             userRepo.save(user);
-            throw new ResponseStatusException(
-                HttpStatus.FORBIDDEN,
-                "Password expired. Please change your password."
-            );
         }
 
+        String token = jwtUtils.generateJwtToken(userDetails, passwordExpired);
+
         return new JwtResponse(
-            jwtUtils.generateJwtToken(userDetails),
+            token,
             "Bearer",
             user.getId(),
             user.getUsername(),
             user.getEmail(),
-            userDetails.getAuthorities().stream()
+            userDetails.getAuthorities()
+                .stream()
                 .map(a -> a.getAuthority())
-                .toList()
+                .toList(),
+            passwordExpired
         );
     }
 

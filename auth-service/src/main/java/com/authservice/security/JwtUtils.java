@@ -37,7 +37,7 @@ public class JwtUtils {
 
     // ================= TOKEN GENERATION =================
 
-    public String generateJwtToken(UserDetailsImpl user) {
+    public String generateJwtToken(UserDetailsImpl user, boolean passwordExpired) {
 
         long now = System.currentTimeMillis();
 
@@ -47,8 +47,9 @@ public class JwtUtils {
                 .toList();
 
         return Jwts.builder()
-                .setSubject(user.getEmail()) // email as subject
+                .setSubject(user.getEmail())
                 .claim("roles", roles)
+                .claim("pwd_expired", passwordExpired) // 🔐 KEY
                 .setIssuedAt(new Date(now))
                 .setExpiration(new Date(now + jwtExpirationSeconds * 1000))
                 .signWith(key, SignatureAlgorithm.HS256)

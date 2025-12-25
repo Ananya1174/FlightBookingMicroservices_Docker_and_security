@@ -230,15 +230,42 @@ public class FlightService {
 
 	    flightRepository.save(flight);
 	}
+	@Transactional(readOnly = true)
+	public List<FlightSeatDto> getSeatMap(Long flightId) {
+
+	    Flight flight = flightRepository.findById(flightId)
+	            .orElseThrow(() ->
+	                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
+
+	    return flight.getSeats().stream()
+	            .map(seat -> new FlightSeatDto(
+	                    seat.getSeatNumber(),
+	                    seat.getStatus()
+	            ))
+	            .toList();
+	}
 
 	@Transactional
 	public void markSeatsAvailable(Long flightId, List<String> seatNumbers) {
 
 	    Flight flight = flightRepository.findById(flightId)
-	        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
+	        .orElseThrow(() ->
+	            new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
+
+	    // ✅ Normalize incoming seat numbers
+	    Set<String> normalizedSeatNumbers =
+	            seatNumbers.stream()
+	                    .filter(Objects::nonNull)
+	                    .map(s -> s.trim().toUpperCase())
+	                    .collect(Collectors.toSet());
 
 	    for (FlightSeat seat : flight.getSeats()) {
-	        if (seatNumbers.contains(seat.getSeatNumber())) {
+
+	        String seatNo = seat.getSeatNumber().trim().toUpperCase();
+
+	        if (normalizedSeatNumbers.contains(seatNo)) {
+
+	            // ✅ Reset seat state
 	            seat.setStatus("AVAILABLE");
 	            seat.setPassengerName(null);
 	        }

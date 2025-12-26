@@ -42,7 +42,8 @@ public class WebSecurityConfig {
 
         http.authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/auth/signup", "/auth/signin").permitAll()
+                .requestMatchers(HttpMethod.POST, "/auth/signup", "/auth/signin","/auth/forgot-password",
+                        "/auth/reset-password").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .anyRequest().authenticated()
         );

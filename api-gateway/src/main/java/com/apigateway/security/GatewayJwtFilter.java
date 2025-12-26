@@ -28,7 +28,11 @@ public class GatewayJwtFilter implements GlobalFilter, Ordered {
 
         String path = exchange.getRequest().getURI().getPath();
 
-        if (path.contains("/auth/signup") || path.contains("/auth/signin")) {
+        if (path.contains("/auth/signup") || path.contains("/auth/signin")|| path.contains("auth/forgot-password")||
+        		path.contains("auth/reset-password")) {
+            return chain.filter(exchange);
+        }
+        if (path.startsWith("/flight-service/api/flight/search")) {
             return chain.filter(exchange);
         }
 

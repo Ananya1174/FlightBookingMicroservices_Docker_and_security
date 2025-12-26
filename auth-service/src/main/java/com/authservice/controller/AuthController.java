@@ -2,13 +2,17 @@ package com.authservice.controller;
 
 import com.authservice.model.User;
 import com.authservice.payload.request.ChangePasswordRequest;
+import com.authservice.payload.request.ForgotPasswordRequest;
 import com.authservice.payload.request.LoginRequest;
+import com.authservice.payload.request.ResetPasswordRequest;
 import com.authservice.payload.request.SignupRequest;
 import com.authservice.payload.response.JwtResponse;
 import com.authservice.repository.RoleRepository;
 import com.authservice.repository.UserRepository;
 import com.authservice.security.JwtUtils;
 import com.authservice.security.UserDetailsImpl;
+import com.authservice.service.PasswordResetService;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -38,6 +42,7 @@ public class AuthController {
     private final RoleRepository roleRepo;
     private final PasswordEncoder encoder;
     private final JwtUtils jwtUtils;
+    private final PasswordResetService passwordResetService;
 
     // ---------------- SIGNUP ----------------
     @PostMapping("/signup")
@@ -140,5 +145,25 @@ public class AuthController {
         userRepo.save(user);
 
         return ResponseEntity.ok("Password changed successfully. Please login again.");
+    }
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+
+        passwordResetService.createResetToken(request.getEmail());
+        return ResponseEntity.ok(
+            "If the email exists, a password reset link has been sent."
+        );
+    }
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(
+            @Valid @RequestBody ResetPasswordRequest request) {
+
+        passwordResetService.resetPassword(
+            request.getToken(),
+            request.getNewPassword()
+        );
+
+        return ResponseEntity.ok("Password reset successful. Please login.");
     }
 }

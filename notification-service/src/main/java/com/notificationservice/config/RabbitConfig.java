@@ -15,6 +15,14 @@ public class RabbitConfig {
     public static final String BOOKING_EXCHANGE = "booking.exchange";
     public static final String ROUTING_CREATED = "booking.created";
     public static final String ROUTING_CANCELLED = "booking.cancelled";
+    public static final String ROUTING_PASSWORD_RESET = "auth.password.reset";
+    
+    @Bean
+    public Binding bindingPasswordReset(Queue emailQueue, TopicExchange bookingExchange) {
+        return BindingBuilder.bind(emailQueue)
+                .to(bookingExchange)
+                .with(ROUTING_PASSWORD_RESET);
+    }
 
     @Bean
     public Queue emailQueue() {

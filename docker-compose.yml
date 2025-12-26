@@ -70,6 +70,8 @@ services:
         condition: service_started
       mysql:
         condition: service_started
+      rabbitmq:
+        condition: service_started
     networks:
       - backend
 

@@ -1,9 +1,5 @@
-FROM maven:3.8.5-openjdk-17
-
+FROM eclipse-temurin:17-jre
 WORKDIR /api-gateway
-
-COPY target/api-gateway-0.0.1-SNAPSHOT.jar app.jar
-
+COPY target/api-gateway-*.jar app.jar
 EXPOSE 8087
-
 CMD ["java", "-jar", "app.jar"]

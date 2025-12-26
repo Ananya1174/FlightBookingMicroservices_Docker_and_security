@@ -1,9 +1,10 @@
-FROM maven:3.8.5-openjdk-17
+FROM eclipse-temurin:17-jre
 
 WORKDIR /notification-service
 
-COPY target/notification-service-0.0.1-SNAPSHOT.jar app.jar
+COPY target/notification-service-*.jar app.jar
 
 EXPOSE 8090
+
 
 CMD ["java", "-jar", "app.jar"]

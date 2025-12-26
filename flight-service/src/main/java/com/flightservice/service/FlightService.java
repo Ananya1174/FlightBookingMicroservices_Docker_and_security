@@ -41,15 +41,32 @@ public class FlightService {
 
 		Flight flight = mapToEntity(req);
 
-		int total = Optional.ofNullable(req.getTotalSeats()).orElse(0);
-		List<FlightSeat> seats = new ArrayList<>(total);
-		for (int i = 1; i <= total; i++) {
-			FlightSeat s = new FlightSeat();
-			s.setSeatNumber(String.valueOf(i));
-			s.setStatus(STATUS_AVAILABLE);
-			s.setFlight(flight);
-			seats.add(s);
+		int totalSeats = req.getTotalSeats();
+
+		// ✈️ Standard narrow-body aircraft: 6 seats per row (A–F)
+		char[] columns = {'A', 'B', 'C', 'D', 'E', 'F'};
+
+		if (totalSeats % columns.length != 0) {
+		    throw new ResponseStatusException(
+		            HttpStatus.BAD_REQUEST,
+		            "totalSeats must be a multiple of 6"
+		    );
 		}
+
+		int totalRows = totalSeats / columns.length;
+
+		List<FlightSeat> seats = new ArrayList<>(totalSeats);
+
+		for (int row = 1; row <= totalRows; row++) {
+		    for (char col : columns) {
+		        FlightSeat s = new FlightSeat();
+		        s.setSeatNumber(row + String.valueOf(col)); 
+		        s.setStatus(STATUS_AVAILABLE);
+		        s.setFlight(flight);
+		        seats.add(s);
+		    }
+		}
+
 		flight.setSeats(seats);
 
 		Flight saved = flightRepository.save(flight);
@@ -252,7 +269,6 @@ public class FlightService {
 	        .orElseThrow(() ->
 	            new ResponseStatusException(HttpStatus.NOT_FOUND, "Flight not found"));
 
-	    // ✅ Normalize incoming seat numbers
 	    Set<String> normalizedSeatNumbers =
 	            seatNumbers.stream()
 	                    .filter(Objects::nonNull)
@@ -265,7 +281,6 @@ public class FlightService {
 
 	        if (normalizedSeatNumbers.contains(seatNo)) {
 
-	            // ✅ Reset seat state
 	            seat.setStatus("AVAILABLE");
 	            seat.setPassengerName(null);
 	        }

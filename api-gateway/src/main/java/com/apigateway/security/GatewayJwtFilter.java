@@ -25,18 +25,21 @@ public class GatewayJwtFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+    	if (exchange.getRequest().getMethod() == HttpMethod.OPTIONS) {
+            return chain.filter(exchange);
+        }
 
         String path = exchange.getRequest().getURI().getPath();
 
-        if (path.contains("/auth/signup") || path.contains("/auth/signin")|| path.contains("auth/forgot-password")||
-        		path.contains("auth/reset-password")) {
+        if (
+        	    path.contains("/auth/signup") ||
+        	    path.contains("/auth/signin") ||
+        	    path.contains("/auth/forgot-password") ||
+        	    path.contains("/auth/reset-password")
+        	) {
             return chain.filter(exchange);
         }
         if (path.startsWith("/flight-service/api/flight/search")) {
-            return chain.filter(exchange);
-        }
-
-        if (exchange.getRequest().getMethod() == HttpMethod.OPTIONS) {
             return chain.filter(exchange);
         }
 

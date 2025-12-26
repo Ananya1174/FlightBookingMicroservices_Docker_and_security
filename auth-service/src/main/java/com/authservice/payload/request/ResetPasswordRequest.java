@@ -9,8 +9,19 @@ public class ResetPasswordRequest {
 
     @NotBlank
     private String newPassword;
+    
+    @NotBlank
+    private String confirmNewPassword;
 
-    public String getToken() {
+    public String getConfirmNewPassword() {
+		return confirmNewPassword;
+	}
+
+	public void setConfirmNewPassword(String confirmNewPassword) {
+		this.confirmNewPassword = confirmNewPassword;
+	}
+
+	public String getToken() {
         return token;
     }
 
